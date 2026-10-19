@@ -16,6 +16,6 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json server.js ./
 COPY public ./public
-ENV TZ=Asia/Shanghai NODE_ENV=production DATA_DIR=/data VIDEO_ROOT=/video
+ENV TZ=Asia/Shanghai NODE_ENV=production DATA_DIR=/data VIDEO_ROOT=/video PORT=8088
 EXPOSE 8088
 CMD ["node", "server.js"]

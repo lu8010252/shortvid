@@ -3,6 +3,8 @@ name: Build APK
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['app/**', 'public/icon-512.png', '.github/workflows/apk.yml']
   workflow_dispatch:
     inputs:
       tag:
@@ -38,6 +40,8 @@ jobs:
       - name: 确定版本号
         run: |
           TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          # 推送到 main 时没有版本号:用 app/package.json 里的版本(如 v1.1.0),覆盖同名发布
+          case "$GITHUB_REF" in refs/heads/*) TAG="v$(node -p "require('./app/package.json').version")";; esac
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: 生成 Android 工程并打补丁

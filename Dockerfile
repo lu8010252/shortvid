@@ -17,5 +17,5 @@ COPY --from=build /app/node_modules ./node_modules
 COPY package.json server.js ./
 COPY public ./public
 ENV TZ=Asia/Shanghai NODE_ENV=production DATA_DIR=/data VIDEO_ROOT=/video
-EXPOSE 3000
+EXPOSE 8088
 CMD ["node", "server.js"]

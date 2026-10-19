@@ -16,6 +16,10 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [phone, tv]
     env:
       INPUT_TAG: ${{ github.event.inputs.tag }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -40,9 +44,10 @@ jobs:
         working-directory: app
         run: |
           pip install pillow
+          if [ "${{ matrix.variant }}" = "tv" ]; then cp capacitor.tv.config.json capacitor.config.json; fi
           npm install --no-audit --no-fund
           npx cap add android
-          python3 scripts/patch_android.py "${TAG#v}" "${{ github.run_number }}" ../public/icon-512.png
+          python3 scripts/patch_android.py "${TAG#v}" "${{ github.run_number }}" ../public/icon-512.png "${{ matrix.variant }}"
           npx cap sync android
 
       - name: 固定签名(保证后续版本能覆盖安装)
@@ -56,10 +61,10 @@ jobs:
 
       - name: 发布到 Releases
         run: |
-          cp app/android/app/build/outputs/apk/debug/app-debug.apk shortvid.apk
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" shortvid.apk --clobber
-          else
-            gh release create "$TAG" shortvid.apk --target "$GITHUB_SHA" --title "$TAG" \
-              --notes "Android 安装包(通用 APK,适配所有 CPU 架构)。首次打开输入服务器地址即可。"
+          if [ "${{ matrix.variant }}" = "tv" ]; then APK=shortvid-tv.apk; else APK=shortvid.apk; fi
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk "$APK"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "shortvid.apk = 手机版;shortvid-tv.apk = 电视/投影版(遥控器操作,适配 Android 8.0+)。首次打开输入服务器地址即可。" || true
           fi
+          gh release upload "$TAG" "$APK" --clobber

@@ -73,7 +73,7 @@ main{position:absolute;inset:0}
 .slide.rot .poster,.slide.rot video{inset:auto;left:50%;top:50%;width:var(--H);height:var(--W);transform:translate(-50%,-50%) rotate(90deg);object-fit:contain}
 .slide.cover video,.slide.cover .poster{object-fit:cover}
 .slide.paused::after{content:"";position:absolute;left:50%;top:50%;width:0;height:0;margin:-36px 0 0 -26px;border-left:62px solid rgba(255,255,255,.6);border-top:36px solid transparent;border-bottom:36px solid transparent;pointer-events:none;z-index:3}
-.slide .side{position:absolute;right:10px;bottom:calc(var(--bn) + 92px);display:flex;flex-direction:column;gap:16px;z-index:3;align-items:center}
+.slide .side{position:absolute;right:10px;bottom:calc(var(--bn) + 160px);display:flex;flex-direction:column;gap:16px;z-index:3;align-items:center}
 .slide .side button{width:50px;height:50px;border-radius:50%;background:rgba(0,0,0,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;gap:1px}
 .slide .side svg{width:26px;height:26px;fill:#fff}
 .slide .side .on svg{fill:var(--red)}
@@ -99,7 +99,56 @@ main{position:absolute;inset:0}
 #toast{position:fixed;left:50%;bottom:calc(90px + var(--sa));transform:translateX(-50%);background:rgba(40,40,40,.95);padding:10px 18px;border-radius:20px;font-size:14px;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none;max-width:80vw;text-align:center}
 #toast.show{opacity:1}
 
+/* 首页顶部「选合集」 */
+.homebar{position:absolute;left:0;right:0;top:0;z-index:7;display:none;padding:calc(var(--st) + 10px) 12px 0;pointer-events:none}
+#app.home .homebar{display:flex}
+.homebar button{pointer-events:auto;background:rgba(0,0,0,.5);border-radius:18px;padding:7px 14px;font-size:14px;max-width:72vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #000}
+
+/* 合集页:搜索 / 分类 / 排序 / 小图 */
+.colhead{display:flex;align-items:center;gap:10px;margin:4px 2px 12px}
+.colhead h2{margin:0;flex:1;font-size:20px}
+.colhead input{width:46%;padding:8px 12px;font-size:14px}
+.ibtn{flex:none;width:36px;height:36px;border-radius:10px;background:#1e1e1e;border:1px solid var(--line);font-size:16px;line-height:1}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:#1e1e1e;border:1px solid var(--line);border-radius:16px;padding:6px 13px;font-size:13px;color:#bbb;white-space:nowrap}
+.chip.on{background:var(--red);border-color:var(--red);color:#fff}
+.sortrow{display:flex;align-items:center;gap:8px;color:#777;font-size:12px;margin-bottom:2px}
+.sortrow .chips{flex:1;padding-bottom:8px}
+.sortrow .chip{padding:4px 11px;font-size:12px}
+.grid.sm{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.grid.sm .card{border-radius:9px}
+.grid.sm .tx{padding:5px 6px 6px}
+.grid.sm .nm{font-size:12px;line-height:1.25}
+.grid.sm .mt{font-size:10.5px;margin-top:2px}
+.grid.sm .badge{font-size:10px;padding:1px 6px;right:4px;top:4px;border-radius:6px}
+.grid.sm .pg{margin-top:4px}
+.grid.list{grid-template-columns:1fr;gap:6px}
+.grid.list .card{display:flex;align-items:center;border-radius:10px}
+.grid.list .im{width:54px;height:72px;aspect-ratio:auto;flex:none}
+.grid.list .tx{flex:1;min-width:0;padding:6px 10px}
+.grid.list .nm{font-size:14px}
+.grid.list .badge{display:none}
+
+/* 选内容抽屉 */
+.sheet{position:fixed;inset:0;z-index:50}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+.sheet-box{position:absolute;left:0;right:0;bottom:0;max-height:82%;overflow-y:auto;background:#141414;border-radius:18px 18px 0 0;padding:14px 14px calc(18px + var(--sa))}
+.sheet-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:17px}
+.menu-btn{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin:8px 0;font-size:15px}
+.sheet-box input{margin:6px 0 10px}
+
+/* 全屏播放(双击进入):隐藏所有按钮和文字 */
+body.imm #nav,body.imm .homebar,body.imm .slide .side,body.imm .slide .info,body.imm .back,body.imm .ptitle,body.imm .hint{display:none!important}
+body.imm .slide .bar{bottom:0}
+
+/* 扫码 */
+#scan{z-index:70;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+#scan video{width:100%;max-height:68%;object-fit:cover;background:#111}
+.scanhint{color:#ddd;font-size:15px}
+
 @media (min-width:900px){
+  .grid.sm{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
   .grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
   .tab{padding-left:max(14px,calc((100vw - 1100px)/2));padding-right:max(14px,calc((100vw - 1100px)/2))}
 }

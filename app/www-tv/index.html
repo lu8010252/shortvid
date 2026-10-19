@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>短视频库 TV</title>
+<style>
+html{font-size:calc(100vw / 64)}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:#0b0b0b;color:#fff;overflow:hidden;font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif}
+#wrap{position:absolute;left:0;top:0;right:0;bottom:0;display:-webkit-box;display:flex;align-items:center}
+.left{-webkit-box-flex:1;flex:1;padding:0 3rem 0 4rem}
+.right{width:26rem;margin-right:4rem;text-align:center}
+.logo{width:3.6rem;height:3.6rem;border-radius:1rem;background:#ff4d67;font-size:1.6rem;line-height:3.6rem;text-align:center}
+h1{font-size:1.8rem;margin:.6rem 0 1rem}
+p{font-size:.75rem;line-height:1.7;margin:.2rem 0;color:#aaa}
+p.big{font-size:1.05rem;color:#fff;margin-bottom:.4rem}
+input{display:block;width:24rem;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:.4rem;padding:.6rem .8rem;font-size:.8rem;margin:.8rem 0 .4rem;outline:none}
+input:focus,button:focus{outline:none;box-shadow:0 0 0 .16rem #fff,0 0 1rem rgba(255,77,103,.9)}
+button{background:#ff4d67;color:#fff;border:0;border-radius:.5rem;padding:.6rem 1.6rem;font-size:.8rem;font-weight:bold;margin-top:.4rem}
+#err{color:#ff6b7f;min-height:1.5rem;font-size:.7rem;margin-top:.5rem}
+#qr{width:20rem;height:20rem;background:#fff;border-radius:.8rem}
+.url{font-size:.8rem;color:#ff4d67;margin-top:.6rem;word-break:break-all}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="left">
+    <div class="logo">▶</div>
+    <h1>短视频库 TV</h1>
+    <p id="tip" class="big">请先设置服务器地址</p>
+    <p id="sub">用手机扫右边的二维码,在手机上填写服务器地址;也可以用遥控器直接输入。</p>
+    <input id="u" placeholder="例如 http://192.168.0.2:8088 或 https://video.example.com" autocomplete="off" autocorrect="off" autocapitalize="off">
+    <button id="go">连接</button>
+    <div id="err"></div>
+  </div>
+  <div class="right" id="qrBox">
+    <canvas id="qr" width="400" height="400"></canvas>
+    <p class="url" id="qrUrl"></p>
+    <p>手机和电视需要连在同一个 WiFi</p>
+  </div>
+</div>
+<script src="qrcode.js"></script>
+<script>
+(function () {
+  var KEY = 'serverUrl';
+  var u = document.getElementById('u'), go = document.getElementById('go'), err = document.getElementById('err'),
+      tip = document.getElementById('tip'), sub = document.getElementById('sub'), qrBox = document.getElementById('qrBox');
+  function get() { try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } }
+  function set(v) { try { localStorage.setItem(KEY, v); } catch (e) { /* ignore */ } }
+  function norm(s) {
+    s = (s || '').replace(/^\s+|\s+$/g, '');
+    if (!s) return '';
+    if (!/^https?:\/\//i.test(s)) s = 'http://' + s;
+    return s.replace(/\/+$/, '');
+  }
+  function probe(url) {
+    return new Promise(function (resolve) {
+      var done = false, t = setTimeout(function () { if (!done) { done = true; resolve(false); } }, 7000);
+      fetch(url + '/api/me', { mode: 'no-cors', cache: 'no-store' }).then(
+        function () { if (!done) { done = true; clearTimeout(t); resolve(true); } },
+        function () { if (!done) { done = true; clearTimeout(t); resolve(false); } });
+    });
+  }
+  function enter(url) { location.replace(url + '/tv.html'); }
+  function connect(raw) {
+    var url = norm(raw);
+    if (!url) { err.textContent = '请输入服务器地址'; return; }
+    go.disabled = true; go.textContent = '连接中…'; err.textContent = '';
+    probe(url).then(function (ok) {
+      if (!ok) { go.disabled = false; go.textContent = '连接'; err.textContent = '连不上 ' + url + ',请检查地址和网络'; return; }
+      set(url); enter(url);
+    });
+  }
+  function drawQR(text) {
+    var cv = document.getElementById('qr'), ctx = cv.getContext('2d');
+    var qr = window.qrcode(0, 'M'); qr.addData(text); qr.make();
+    var n = qr.getModuleCount(), sc = Math.floor(cv.width / (n + 6)), off = Math.floor((cv.width - sc * n) / 2);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.fillStyle = '#000';
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect(off + c * sc, off + r * sc, sc, sc);
+  }
+  var lastUrl = '';
+  function refreshQR() {
+    var s = '';
+    try { if (window.ShortvidTV) s = window.ShortvidTV.setupUrl(); } catch (e) { s = ''; }
+    if (!s) { qrBox.style.display = 'none'; sub.textContent = '请用遥控器输入服务器地址。'; return; }
+    qrBox.style.display = '';
+    if (s !== lastUrl) { lastUrl = s; try { drawQR(s); } catch (e) { /* ignore */ } document.getElementById('qrUrl').textContent = s; }
+  }
+  // 手机在扫码页提交了地址 -> 原生壳回调这里
+  window.__tvSetup = function (url) { u.value = url; tip.textContent = '收到手机发来的地址'; connect(url); };
+  go.onclick = function () { connect(u.value); };
+  u.addEventListener('keydown', function (e) { if (e.keyCode === 13) { e.preventDefault(); connect(u.value); } });
+
+  var saved = get(), change = /[?&]change=1/.test(location.search);
+  u.value = saved;
+  if (saved && !change) {
+    tip.textContent = '正在连接…'; sub.textContent = saved; u.style.display = 'none'; go.style.display = 'none'; qrBox.style.display = 'none';
+    probe(saved).then(function (ok) {
+      if (ok) { enter(saved); return; }
+      tip.textContent = '连不上服务器'; sub.textContent = '请检查网络,或重新设置服务器地址。';
+      u.style.display = ''; go.style.display = ''; err.textContent = '连不上 ' + saved;
+      refreshQR(); setInterval(refreshQR, 3000); go.focus();
+    });
+  } else {
+    refreshQR(); setInterval(refreshQR, 3000); go.focus();
+  }
+})();
+</script>
+</body>
+</html>

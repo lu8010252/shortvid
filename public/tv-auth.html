@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0b0b">
+<link rel="icon" href="/icon-192.png">
+<title>电视登录 - 短视频库</title>
+<style>
+:root{--red:#ff4d67}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#0b0b0b;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+body{display:flex;align-items:center;justify-content:center;padding:24px}
+.box{width:min(360px,100%);text-align:center;display:flex;flex-direction:column;gap:12px}
+.logo{width:64px;height:64px;border-radius:18px;background:var(--red);margin:0 auto;font-size:28px;line-height:64px}
+h1{margin:6px 0 0;font-size:21px}
+p{margin:0;color:#9a9a9a;font-size:14px;line-height:1.7}
+b{color:#fff}
+input{background:#1a1a1a;border:1px solid #262626;color:#fff;border-radius:10px;padding:13px 14px;font:inherit;outline:none;width:100%}
+input:focus{border-color:var(--red)}
+button{font:inherit;border:0;border-radius:10px;padding:13px;font-weight:600;color:#fff;background:var(--red)}
+button.g{background:#262626;font-weight:500}
+button:disabled{opacity:.5}
+.err{color:#ff6b7f;min-height:20px;font-size:14px}
+.ok{font-size:54px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">▶</div>
+  <h1 id="ttl">电视登录</h1>
+  <p id="tip">正在检查…</p>
+
+  <form id="lf" class="hidden" style="display:flex;flex-direction:column;gap:12px">
+    <input id="lu" placeholder="账号" autocomplete="username" required>
+    <input id="lp" type="password" placeholder="密码" autocomplete="current-password" required>
+    <button type="submit">登录</button>
+  </form>
+
+  <div id="cf" class="hidden" style="display:flex;flex-direction:column;gap:12px">
+    <button id="yes">确认登录</button>
+    <button id="no" class="g">取消</button>
+  </div>
+
+  <div id="done" class="hidden"><div class="ok">✅</div></div>
+  <div id="err" class="err"></div>
+</div>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var code = (new URLSearchParams(location.search).get('code') || '').toUpperCase();
+  function show(id, on) { $(id).classList[on ? 'remove' : 'add']('hidden'); }
+  function api(url, body) {
+    return fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); });
+  }
+  function ready(me) {
+    show('#lf', false); show('#cf', true);
+    $('#ttl').textContent = '让电视登录这个账号?';
+    $('#tip').innerHTML = '电视将以 <b>' + (me.user.nickname || me.user.username).replace(/[<>&]/g, '') + '</b> 的身份观看,<br>时长限制等规则同样生效。';
+  }
+  function boot() {
+    if (!code) { $('#tip').textContent = '没有找到电视的二维码信息,请在电视上重新扫码。'; return; }
+    api('/api/me').then(function (r) {
+      if (r.status === 200) { ready(r.j); return; }
+      $('#ttl').textContent = '先登录一下';
+      $('#tip').textContent = '登录后点确认,电视就会自动进入。';
+      show('#lf', true);
+    });
+  }
+  $('#lf').onsubmit = function (e) {
+    e.preventDefault(); $('#err').textContent = '';
+    api('/api/login', { username: $('#lu').value.trim(), password: $('#lp').value }).then(function (r) {
+      if (r.status === 200) { boot(); } else { $('#err').textContent = r.j.error || '登录失败'; }
+    });
+  };
+  $('#yes').onclick = function () {
+    $('#yes').disabled = true; $('#err').textContent = '';
+    api('/api/tv/approve', { code: code }).then(function (r) {
+      if (r.status === 200) {
+        show('#cf', false); show('#done', true);
+        $('#ttl').textContent = '已同步';
+        $('#tip').textContent = '电视马上就会进入,可以关掉这个页面了。';
+      } else { $('#yes').disabled = false; $('#err').textContent = r.j.error || '失败了,请重试'; }
+    });
+  };
+  $('#no').onclick = function () { show('#cf', false); $('#ttl').textContent = '已取消'; $('#tip').textContent = '电视上的二维码不会登录任何账号。'; };
+  boot();
+})();
+</script>
+</body>
+</html>

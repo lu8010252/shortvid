@@ -99,10 +99,29 @@ async function openCollections(l) {
   modal(`「${l.name}」的合集`, body => {
     if (!cols.length) body.appendChild(el('div', 'empty', '还没有视频,请先扫描'));
     cols.forEach(c => {
-      const d = el('div', 'dir', `📂 ${c.name}(${c.count} 集)`);
-      d.onclick = () => editOrder(l, c); body.appendChild(d);
+      const d = el('div', 'dir crow');
+      const nm = el('span', 'cn', `📂 ${c.name}(${c.count} 集)`); nm.onclick = () => editOrder(l, c);
+      const cat = el('button', 'btn s g', c.category || '设分类');
+      cat.onclick = wrap(async e => { e.stopPropagation(); await setCategory(l, c, cat); });
+      d.append(nm, cat); body.appendChild(d);
     });
-    body.appendChild(el('div', 'hint', '点击合集可调整集数顺序、修改标题。默认已按「第2集 < 第10集」自然排序。'));
+    body.appendChild(el('div', 'hint', '点击合集名可调整集数顺序、修改标题;右侧按钮设置分类(不设置时,分类默认就是视频库名称)。'));
+  });
+}
+async function setCategory(l, c, btn) {
+  const cats = await api('/categories');
+  let inp1;
+  modal(`「${c.name}」的分类`, body => {
+    inp1 = field(body, '分类名称(留空 = 用视频库名称)', inp('text', c.category || '', '例如:儿歌 / 英语 / 动画'));
+    inp1.setAttribute('list', 'catList');
+    const dl = el('datalist'); dl.id = 'catList';
+    cats.forEach(x => { const o = el('option'); o.value = x; dl.appendChild(o); });
+    body.appendChild(dl);
+    if (cats.length) body.appendChild(el('div', 'hint', '已有分类:' + cats.join('、')));
+  }, async () => {
+    const category = inp1.value.trim();
+    await api('/collection-meta', 'PUT', { lib: l.id, col: c.col, category });
+    c.category = category; btn.textContent = category || '设分类'; toast('已保存');
   });
 }
 async function editOrder(l, c) {

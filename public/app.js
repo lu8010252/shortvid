@@ -104,7 +104,7 @@ class Feed {
     s.addEventListener('click', e => {
       if (e.target.closest('.side,.bar')) return;
       const now = Date.now();
-      if (s._tap && now - s._tap < 280) { clearTimeout(s._tt); s._tap = 0; this.setFav(j, true); this.burst(s); return; }
+      if (s._tap && now - s._tap < 280) { clearTimeout(s._tt); s._tap = 0; toggleImm(this, j); return; }
       s._tap = now; s._tt = setTimeout(() => { s._tap = 0; this.toggle(j); }, 280);
     });
     this.applyRot(j);
@@ -235,10 +235,58 @@ class Feed {
 
 const homeFeed = new Feed($('#v-home'));
 const ovFeed = new Feed($('#pFeed'));
-let curTab = 'home', homeLoaded = false, playerOpen = false, subOpen = false;
+let curTab = 'home', homeLoaded = false, playerOpen = false, subOpen = false, pickOpen = false, scanOpen = false;
+
+/* =================== 全屏播放(双击) / 返回键 =================== */
+const IN_APP = /ShortvidApp/.test(navigator.userAgent);
+let imm = false, immRot = null;
+function nativeFs(on) {
+  try { if (window.ShortvidNative) { window.ShortvidNative.fullscreen(on); return; } } catch { /* ignore */ }
+  try {
+    const d = document.documentElement;
+    if (on) { const f = d.requestFullscreen || d.webkitRequestFullscreen; if (f) f.call(d); }
+    else if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } catch { /* ignore */ }
+}
+function enterImm(f, j) {
+  imm = true; document.body.classList.add('imm'); immRot = null;
+  const s = f.slides[j], it = f.items[j];
+  // 竖屏手机上的横屏视频:全屏时自动转成横向
+  if (s && it && f.devPortrait(s) && it.width > it.height && !f.isRot(j)) { f.rotOv[it.id] = true; f.applyRot(j); immRot = { f, j, id: it.id }; }
+  nativeFs(true);
+  toast('全屏播放 · 双击或按返回键退出');
+}
+function exitImm() {
+  if (!imm) return;
+  imm = false; document.body.classList.remove('imm');
+  if (immRot) { const r = immRot; immRot = null; r.f.rotOv[r.id] = false; r.f.applyRot(r.j); }
+  nativeFs(false);
+}
+const toggleImm = (f, j) => (imm ? exitImm() : enterImm(f, j));
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && imm) exitImm(); });
+
+// App 里不用浏览器历史,返回键由原生壳调用 window.__appBack();网页/PWA 仍用 history
+const pushNav = tag => { if (!IN_APP) history.pushState({ v: tag }, ''); };
+const popNav = () => { if (IN_APP) uiBack(); else history.back(); };
+function uiBack() {
+  if (imm) { exitImm(); return true; }
+  if (scanOpen) { closeScan(); return true; }
+  if (pickOpen) { closePick(); return true; }
+  if (playerOpen) { closePlayer(); return true; }
+  if (subOpen) { closeSub(); return true; }
+  if (curTab !== 'home') { showTab('home'); return true; }
+  return false;
+}
+let lastBack = 0;
+window.__appBack = () => {
+  if (!me || $('#login:not(.hidden)')) return false;
+  if (uiBack()) return true;
+  if (Date.now() - lastBack < 2000) return false;
+  lastBack = Date.now(); toast('再按一次返回键退出'); return true;
+};
 
 function refreshActive() {
-  homeFeed.setActive(!locked && !playerOpen && curTab === 'home' && !document.hidden);
+  homeFeed.setActive(!locked && !playerOpen && !pickOpen && curTab === 'home' && !document.hidden);
   ovFeed.setActive(!locked && playerOpen && !document.hidden);
 }
 const activeFeed = () => (playerOpen ? ovFeed : curTab === 'home' ? homeFeed : null);
@@ -301,8 +349,8 @@ window.addEventListener('pagehide', () => { homeFeed.saveProgress(); ovFeed.save
 /* =================== 页面 / 导航 =================== */
 function showLogin() {
   me = null; $('#app').classList.add('hidden'); $('#login').classList.remove('hidden');
-  homeFeed.destroy(); ovFeed.destroy(); homeLoaded = false; playerOpen = false; subOpen = false;
-  $('#player').classList.add('hidden'); $('#sub').classList.add('hidden');
+  homeFeed.destroy(); ovFeed.destroy(); homeLoaded = false; playerOpen = false; subOpen = false; pickOpen = false; colCache = null;
+  exitImm(); $('#player').classList.add('hidden'); $('#sub').classList.add('hidden'); $('#pick').classList.add('hidden');
 }
 $('#loginForm').onsubmit = async e => {
   e.preventDefault(); $('#lerr').textContent = '';
@@ -321,12 +369,13 @@ async function boot() {
   $('#mAdmin').classList.toggle('hidden', u.role !== 'admin');
   $('#mPwd').classList.toggle('hidden', u.role !== 'admin');
   $('#autoSw').classList.toggle('on', autoRot);
+  $('#addrTxt').textContent = location.origin;
   if (r.lock.locked) doLock(r.lock.message);
   showTab(curTab, true);
 }
 function showTab(t, force) {
   if (!force && t === curTab && homeLoaded) { if (t !== 'home') loadTab(t); return; }
-  curTab = t;
+  curTab = t; exitImm();
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('hidden', x.id !== 'v-' + t));
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $('#app').classList.toggle('home', t === 'home');
@@ -341,20 +390,39 @@ async function loadTab(t) {
 document.querySelectorAll('#nav button').forEach(b => b.onclick = () => showTab(b.dataset.t));
 
 function msgBox(parent, text) { const d = el('div', 'loading', text); parent.appendChild(d); return d; }
+function getSrc() {
+  try { const o = JSON.parse(store.get('homeSrc', '')); if (o && o.t) return o; } catch { /* ignore */ }
+  return { t: 'random' };
+}
+const srcLabel = o => (o.t === 'col' ? '▦ ' + o.name : o.t === 'cat' ? '🔀 ' + o.cat : '🔀 随便刷');
+let autoPicked = false;
 async function loadHome() {
   if (homeLoaded) return;
   homeLoaded = true;
+  const src = getSrc();
+  $('#srcBtn').textContent = srcLabel(src) + ' ▾';
   const root = $('#v-home'); const box = msgBox(root, '加载中…');
   try {
-    const r = await api('/api/feed?mode=random');
+    let url = '/api/feed?mode=random', mode = 'random';
+    if (src.t === 'col') { url = `/api/feed?mode=collection&lib=${src.lib}&col=${encodeURIComponent(src.col)}`; mode = 'collection'; }
+    else if (src.t === 'cat') url = '/api/feed?mode=random&cat=' + encodeURIComponent(src.cat);
+    const r = await api(url);
     box.remove();
-    if (!r.items.length) { msgBox(root, '还没有视频\n请先到管理后台添加视频库并扫描'); homeLoaded = false; return; }
-    homeFeed.mount(r.items, 0, 'random', false);
+    if (!r.items.length) { msgBox(root, '这里还没有视频\n点左上角「选合集」换一个吧'); homeLoaded = false; return; }
+    homeFeed.mount(r.items, r.start || 0, mode, mode === 'collection');
     refreshActive();
   } catch (e) {
-    box.textContent = e.status === 403 ? '请到「合集」里选一个想看的内容吧 😊' : (e.message || '加载失败');
+    box.textContent = e.status === 403 ? '点左上角「选合集」,挑一个想看的内容吧 😊' : (e.message || '加载失败');
     if (e.status !== 403) homeLoaded = false;
+    else if (!autoPicked) { autoPicked = true; openPick(); }
   }
+}
+function setHomeSrc(o) {
+  store.set('homeSrc', JSON.stringify(o));
+  closePickUI();
+  homeFeed.destroy(); homeLoaded = false;
+  const old = $('#v-home .loading'); if (old) old.remove();
+  loadHome();
 }
 function card(o) {
   const c = el('div', 'card');
@@ -365,19 +433,103 @@ function card(o) {
   if (o.pct) { const pg = el('div', 'pg'); const i = el('i'); i.style.width = o.pct + '%'; pg.appendChild(i); tx.appendChild(pg); }
   c.append(im, tx); c.onclick = o.onclick; return c;
 }
-async function loadCols() {
-  const g = $('#colGrid');
-  try {
-    const list = await api('/api/collections');
-    g.innerHTML = '';
-    if (!list.length) { g.appendChild(el('div', 'empty', '还没有可看的合集\n请家长在管理后台添加视频库')); return; }
-    list.forEach(c => g.appendChild(card({
-      img: '/api/thumb/' + c.cover, name: c.name, meta: `${c.count} 集 · ${fmtDur(c.duration)}`,
-      badge: c.done ? `${c.done}/${c.count}` : '', pct: c.count ? c.done / c.count * 100 : 0,
-      onclick: () => openSub({ title: c.name, mode: 'collection', url: `/api/feed?mode=collection&lib=${c.lib}&col=${encodeURIComponent(c.col)}` })
-    })));
-  } catch (e) { g.innerHTML = ''; g.appendChild(el('div', 'empty', e.message)); }
+
+/* ---- 合集列表:分类 / 排序 / 搜索 / 小图 ---- */
+let colCache = null;
+const SORTS = [['recent', '最近观看'], ['name', '名称'], ['count', '集数'], ['added', '最新添加'], ['todo', '没看完']];
+const colUI = { cat: store.get('colCat', ''), sort: store.get('colSort', 'recent'), view: store.get('colView', 'sm'), q: '' };
+const zhCmp = (a, b) => String(a).localeCompare(String(b), 'zh-Hans-CN', { numeric: true });
+async function fetchCols(force) {
+  if (!colCache || force) colCache = await api('/api/collections');
+  return colCache;
 }
+function sortCols(list, how) {
+  const a = list.slice();
+  const byName = (x, y) => zhCmp(x.name, y.name);
+  if (how === 'name') a.sort(byName);
+  else if (how === 'count') a.sort((x, y) => y.count - x.count || byName(x, y));
+  else if (how === 'added') a.sort((x, y) => y.added - x.added);
+  else if (how === 'todo') {
+    const t = c => (c.last && c.done < c.count ? 1 : 0);
+    a.sort((x, y) => t(y) - t(x) || y.last - x.last || byName(x, y));
+  } else a.sort((x, y) => y.last - x.last || byName(x, y));
+  return a;
+}
+function chipRow(box, items, cur, onPick) {
+  box.innerHTML = '';
+  items.forEach(([v, t]) => {
+    const b = el('button', v === cur ? 'chip on' : 'chip', t); b.onclick = () => onPick(v); box.appendChild(b);
+  });
+}
+const colCats = list => [...new Set(list.map(c => c.cat))].sort(zhCmp);
+const colOpen = c => openSub({ title: c.name, mode: 'collection', url: `/api/feed?mode=collection&lib=${c.lib}&col=${encodeURIComponent(c.col)}` });
+function colCard(c, view, onclick) {
+  return card({
+    img: '/api/thumb/' + c.cover, name: c.name,
+    meta: `${c.count} 集 · ${fmtDur(c.duration)}` + (view === 'list' ? ' · ' + c.cat : ''),
+    badge: c.done ? `${c.done}/${c.count}` : '', pct: c.count ? c.done / c.count * 100 : 0, onclick
+  });
+}
+function filterCols(list, cat, q) {
+  q = (q || '').trim().toLowerCase();
+  return list.filter(c => (!cat || c.cat === cat) && (!q || c.name.toLowerCase().includes(q)));
+}
+function drawCols() {
+  const list = colCache || [], g = $('#colGrid');
+  const cats = colCats(list);
+  if (colUI.cat && !cats.includes(colUI.cat)) colUI.cat = '';
+  chipRow($('#catChips'), [['', `全部 ${list.length}`], ...cats.map(c => [c, `${c} ${list.filter(x => x.cat === c).length}`])], colUI.cat,
+    v => { colUI.cat = v; store.set('colCat', v); drawCols(); });
+  $('#catChips').classList.toggle('hidden', cats.length < 2);
+  chipRow($('#sortChips'), SORTS, colUI.sort, v => { colUI.sort = v; store.set('colSort', v); drawCols(); });
+  $('#colView').textContent = colUI.view === 'list' ? '☰' : '▦';
+  const rows = sortCols(filterCols(list, colUI.cat, colUI.q), colUI.sort);
+  g.className = 'grid ' + (colUI.view === 'list' ? 'list' : 'sm');
+  g.innerHTML = '';
+  if (!rows.length) { g.appendChild(el('div', 'empty', list.length ? '没有符合的合集' : '还没有可看的合集\n请家长在管理后台添加视频库')); return; }
+  rows.forEach(c => g.appendChild(colCard(c, colUI.view, () => colOpen(c))));
+}
+async function loadCols() {
+  try { await fetchCols(true); drawCols(); }
+  catch (e) { const g = $('#colGrid'); g.innerHTML = ''; g.appendChild(el('div', 'empty', e.message)); }
+}
+$('#colQ').oninput = e => { colUI.q = e.target.value; drawCols(); };
+$('#colView').onclick = () => { colUI.view = colUI.view === 'list' ? 'sm' : 'list'; store.set('colView', colUI.view); drawCols(); };
+
+/* ---- 首页「选合集」抽屉 ---- */
+const pickUI = { cat: '', q: '' };
+async function openPick() {
+  if (pickOpen) return;
+  pickOpen = true; pushNav('pick'); exitImm();
+  $('#pick').classList.remove('hidden'); $('#pickQ').value = ''; pickUI.q = ''; pickUI.cat = '';
+  refreshActive();
+  try { await fetchCols(); } catch { /* ignore */ }
+  drawPick();
+}
+function drawPick() {
+  const list = colCache || [], cats = colCats(list);
+  chipRow($('#pickChips'), [['', `全部 ${list.length}`], ...cats.map(c => [c, `${c} ${list.filter(x => x.cat === c).length}`])], pickUI.cat,
+    v => { pickUI.cat = v; drawPick(); });
+  $('#pickChips').classList.toggle('hidden', cats.length < 2);
+  const rc = $('#pickCat');
+  rc.classList.toggle('hidden', !pickUI.cat);
+  if (pickUI.cat) { rc.textContent = `🔀 随机看「${pickUI.cat}」里的全部视频`; rc.onclick = () => setHomeSrc({ t: 'cat', cat: pickUI.cat }); }
+  const g = $('#pickGrid'); g.innerHTML = '';
+  const rows = sortCols(filterCols(list, pickUI.cat, pickUI.q), 'recent');
+  if (!rows.length) { g.appendChild(el('div', 'empty', list.length ? '没有符合的合集' : '还没有可看的合集')); return; }
+  rows.forEach(c => g.appendChild(colCard(c, 'list', () => setHomeSrc({ t: 'col', lib: c.lib, col: c.col, name: c.name }))));
+}
+function closePick() {
+  if (!pickOpen) return;
+  pickOpen = false; $('#pick').classList.add('hidden'); refreshActive();
+}
+const closePickUI = () => { if (!pickOpen) return; if (IN_APP) closePick(); else history.back(); };
+$('#srcBtn').onclick = openPick;
+$('#pickX').onclick = closePickUI;
+$('#pickBg').onclick = closePickUI;
+$('#pickRand').onclick = () => setHomeSrc({ t: 'random' });
+$('#pickQ').oninput = e => { pickUI.q = e.target.value; drawPick(); };
+
 async function loadFav() {
   const g = $('#favGrid');
   try {
@@ -404,6 +556,10 @@ $('#mAuto').onclick = () => {
   feeds.forEach(f => { f.rotOv = {}; f.applyAllRot(); });
 };
 $('#mAdmin').onclick = () => { location.href = '/admin.html'; };
+$('#mAddr').onclick = async () => {
+  try { await navigator.clipboard.writeText(location.origin); toast('已复制:' + location.origin); }
+  catch { prompt('长按复制本站地址', location.origin); }
+};
 // 仅在 Android App 里显示:回到壳里的服务器地址页
 if (/ShortvidApp/.test(navigator.userAgent)) $('#mServer').classList.remove('hidden');
 $('#mServer').onclick = () => { location.href = 'http://localhost/?change=1'; };
@@ -418,7 +574,7 @@ $('#mLogout').onclick = async () => { try { await api('/api/logout', {}); } catc
 async function openSub(o) {
   const page = $('#sub'); $('#sTitle').textContent = o.title;
   const g = $('#subGrid'); g.innerHTML = ''; g.appendChild(el('div', 'empty', '加载中…'));
-  page.classList.remove('hidden'); page.scrollTop = 0; subOpen = true; history.pushState({ v: 'sub' }, '');
+  page.classList.remove('hidden'); page.scrollTop = 0; subOpen = true; pushNav('sub');
   try {
     const r = await api(o.url);
     g.innerHTML = '';
@@ -438,21 +594,22 @@ async function openSub(o) {
   } catch (e) { g.innerHTML = ''; g.appendChild(el('div', 'empty', e.message)); }
 }
 function openPlayer(items, start, mode, title, resume) {
-  playerOpen = true; history.pushState({ v: 'player' }, '');
+  playerOpen = true; pushNav('player');
   $('#player').classList.remove('hidden'); $('#pTitle').textContent = title || '';
   ovFeed.onChange = it => { if (!title) $('#pTitle').textContent = it.cname; };
   ovFeed.mount(items, start, mode, resume);
   refreshActive();
 }
 function closePlayer() {
-  playerOpen = false; ovFeed.destroy(); $('#player').classList.add('hidden'); refreshActive();
+  exitImm(); playerOpen = false; ovFeed.destroy(); $('#player').classList.add('hidden'); refreshActive();
   if (curTab === 'cols') loadCols(); else if (curTab === 'fav') loadFav();
 }
-function closeSub() { subOpen = false; $('#sub').classList.add('hidden'); if (curTab === 'cols') loadCols(); }
-$('#pBack').onclick = () => history.back();
-$('#sBack').onclick = () => history.back();
+function closeSub() { exitImm(); subOpen = false; $('#sub').classList.add('hidden'); if (curTab === 'cols') loadCols(); }
+$('#pBack').onclick = popNav;
+$('#sBack').onclick = popNav;
 window.addEventListener('popstate', () => {
-  if (playerOpen) closePlayer(); else if (subOpen) closeSub();
+  if (imm) exitImm();
+  if (scanOpen) closeScan(); else if (pickOpen) closePick(); else if (playerOpen) closePlayer(); else if (subOpen) closeSub();
 });
 
 /* ---- 键盘(电脑) / 窗口变化 ---- */
@@ -461,8 +618,55 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); f.goTo(f.cur + 1); }
   else if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); f.goTo(f.cur - 1); }
   else if (e.key === ' ') { e.preventDefault(); f.toggle(f.cur); }
-  else if (e.key === 'Escape' && playerOpen) history.back();
+  else if (e.key === 'Escape') { if (imm) exitImm(); else if (playerOpen) popNav(); }
 });
+/* ---- 扫码让电视登录当前账号 ---- */
+let scanStream = null, scanTimer = 0;
+const loadScript = src => new Promise((ok, no) => { const t = document.createElement('script'); t.src = src; t.onload = ok; t.onerror = no; document.head.appendChild(t); });
+function closeScan() {
+  scanOpen = false; clearTimeout(scanTimer); $('#scan').classList.add('hidden');
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  $('#scanV').srcObject = null;
+}
+async function approveTv(code) {
+  if (IN_APP) closeScan(); else history.back();
+  try { const r = await api('/api/tv/approve', { code }); toast('电视已登录:' + r.nickname); }
+  catch (e) { toast(e.message); }
+}
+async function scanTv() {
+  const tip = '当前环境不能直接调用相机。请用手机相机或微信「扫一扫」扫描电视上的二维码,网页打开后点「确认登录」即可。';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert(tip); return; }
+  try { scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }); }
+  catch (e) { alert('无法打开相机(' + (e.message || e.name) + ')。\n也可以用手机相机/微信「扫一扫」扫描电视上的二维码。'); return; }
+  const v = $('#scanV'); v.srcObject = scanStream; v.play().catch(() => {});
+  scanOpen = true; pushNav('scan'); $('#scan').classList.remove('hidden');
+  let det = null;
+  try { if (window.BarcodeDetector) det = new BarcodeDetector({ formats: ['qr_code'] }); } catch { det = null; }
+  if (!det && !window.jsQR) { try { await loadScript('/jsqr.js'); } catch { closeScan(); alert(tip); return; } }
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+  const tick = async () => {
+    if (!scanOpen) return;
+    try {
+      if (v.videoWidth) {
+        let text = '';
+        if (det) { const r = await det.detect(v); text = (r[0] && r[0].rawValue) || ''; }
+        else {
+          const w = 480, h = Math.round(w * v.videoHeight / v.videoWidth);
+          cv.width = w; cv.height = h; ctx.drawImage(v, 0, 0, w, h);
+          const d = ctx.getImageData(0, 0, w, h), q = window.jsQR(d.data, w, h);
+          text = q ? q.data : '';
+        }
+        const m = /[?&]code=([0-9A-Za-z]{6,16})/.exec(text);
+        if (m) { approveTv(m[1]); return; }
+      }
+    } catch { /* ignore */ }
+    scanTimer = setTimeout(tick, 250);
+  };
+  tick();
+}
+$('#mScan').onclick = scanTv;
+$('#scanX').onclick = popNav;
+
 let rz; window.addEventListener('resize', () => {
   clearTimeout(rz); rz = setTimeout(() => feeds.forEach(f => { if (f.sc && f.cur >= 0) { f.applyAllRot(); f.sc.scrollTop = f.cur * f.sc.clientHeight; } }), 150);
 });

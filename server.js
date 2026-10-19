@@ -10,6 +10,7 @@ const { execFile } = require('child_process');
 const PORT = +process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const VIDEO_ROOT = path.resolve(process.env.VIDEO_ROOT || '/video');
+const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 const THUMB_DIR = path.join(DATA_DIR, 'thumbs');
 fs.mkdirSync(THUMB_DIR, { recursive: true });
 
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS progress(
   PRIMARY KEY(user_id, video_id));
 CREATE TABLE IF NOT EXISTS favorites(user_id INTEGER, video_id INTEGER, created_at INTEGER, PRIMARY KEY(user_id, video_id));
 CREATE TABLE IF NOT EXISTS usage(user_id INTEGER, day TEXT, seconds INTEGER DEFAULT 0, PRIMARY KEY(user_id, day));
+CREATE TABLE IF NOT EXISTS collection_meta(lib_id INTEGER, collection TEXT, category TEXT, PRIMARY KEY(lib_id, collection));
 CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, type TEXT, title TEXT, status TEXT, detail TEXT, created_at INTEGER, finished_at INTEGER);
 `);
 db.prepare(`UPDATE tasks SET status='failed', detail='服务重启,任务已中断', finished_at=? WHERE status IN ('running','pending')`).run(Date.now());
@@ -302,6 +304,11 @@ const publicUser = u => ({
 });
 
 // ----- 登录 -----
+function newSession(req, res, uid, days) {
+  const token = crypto.randomBytes(32).toString('hex');
+  db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(token, uid, Date.now() + days * 864e5);
+  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${req.secure ? '; Secure' : ''}`);
+}
 const attempts = new Map();
 app.post('/api/login', (req, res) => {
   const ip = req.ip;
@@ -316,9 +323,7 @@ app.post('/api/login', (req, res) => {
   }
   if (!u.enabled) return res.status(403).json({ error: '账号已停用' });
   attempts.delete(ip);
-  const token = crypto.randomBytes(32).toString('hex');
-  db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(token, u.id, Date.now() + 30 * 864e5);
-  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 86400}${req.secure ? '; Secure' : ''}`);
+  newSession(req, res, u.id, 30);
   res.json({ ok: true });
 });
 app.post('/api/logout', (req, res) => {
@@ -343,7 +348,8 @@ const META = `SELECT v.id,v.title,v.duration,v.width,v.height,v.collection,v.seq
   IFNULL(p.position,0) pos,IFNULL(p.finished,0) finished,p.updated_at pt,(f.video_id IS NOT NULL) fav
   FROM videos v JOIN libraries l ON l.id=v.lib_id
   LEFT JOIN progress p ON p.video_id=v.id AND p.user_id=@u
-  LEFT JOIN favorites f ON f.video_id=v.id AND f.user_id=@u`;
+  LEFT JOIN favorites f ON f.video_id=v.id AND f.user_id=@u
+  LEFT JOIN collection_meta cm ON cm.lib_id=v.lib_id AND cm.collection=v.collection`;
 function shape(rows) {
   return rows.map(r => ({
     id: r.id, title: r.title, duration: r.duration, width: r.width, height: r.height,
@@ -358,7 +364,10 @@ app.get('/api/feed', auth, (req, res) => {
   let rows, start = 0;
   if (mode === 'random') {
     if (!u.allow_random && u.role !== 'admin') return res.status(403).json({ error: '未开放随便刷' });
-    rows = shuffle(db.prepare(base).all(P)).slice(0, 1500);
+    const cat = String(req.query.cat || '');
+    if (cat) rows = db.prepare(base + " AND IFNULL(NULLIF(cm.category,''), l.name)=@cat").all({ ...P, cat });
+    else rows = db.prepare(base).all(P);
+    rows = shuffle(rows).slice(0, 1500);
   } else if (mode === 'collection') {
     const lib = +req.query.lib, col = String(req.query.col || '');
     if (!libs.includes(lib)) return res.status(403).json({ error: '没有权限' });
@@ -377,16 +386,19 @@ app.get('/api/collections', auth, (req, res) => {
   const u = req.user, libs = allowedLibs(u);
   const rows = db.prepare(`
     SELECT v.lib_id,v.collection,l.name lname,COUNT(*) cnt,SUM(v.duration) dur,
-      SUM(CASE WHEN p.finished=1 THEN 1 ELSE 0 END) done,MAX(p.updated_at) last,
+      SUM(CASE WHEN p.finished=1 THEN 1 ELSE 0 END) done,MAX(p.updated_at) last,MAX(v.id) added,
+      IFNULL(NULLIF(cm.category,''), l.name) cat,
       (SELECT id FROM videos w WHERE w.lib_id=v.lib_id AND w.collection=v.collection ORDER BY w.seq LIMIT 1) cover
     FROM videos v JOIN libraries l ON l.id=v.lib_id
+    LEFT JOIN collection_meta cm ON cm.lib_id=v.lib_id AND cm.collection=v.collection
     LEFT JOIN progress p ON p.video_id=v.id AND p.user_id=?
     WHERE v.lib_id IN (${inList(libs)})
     GROUP BY v.lib_id,v.collection
     ORDER BY last DESC, l.name, v.collection`).all(u.id);
   res.json(rows.map(r => ({
     lib: r.lib_id, col: r.collection, name: r.collection ? r.collection.split('/').pop() : r.lname,
-    count: r.cnt, duration: r.dur || 0, done: r.done, cover: r.cover
+    count: r.cnt, duration: r.dur || 0, done: r.done, cover: r.cover,
+    last: r.last || 0, added: r.added || 0, cat: r.cat
   })));
 });
 app.get('/api/thumb/:id', auth, (req, res) => {
@@ -456,6 +468,48 @@ app.post('/api/fav', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ----- 电视扫码登录(设备码) -----
+const tvCodes = new Map();   // code -> { poll, uid, exp }
+const tvRate = new Map();    // ip -> { n, t }
+function tvClean() {
+  const n = Date.now();
+  for (const [k, v] of tvCodes) if (v.exp < n) tvCodes.delete(k);
+  for (const [k, v] of tvRate) if (n - v.t > 300e3) tvRate.delete(k);
+}
+setInterval(tvClean, 60e3);
+app.post('/api/tv/code', (req, res) => {
+  const now = Date.now();
+  const r = tvRate.get(req.ip) || { n: 0, t: now };
+  if (now - r.t > 60e3) { r.n = 0; r.t = now; }
+  tvRate.set(req.ip, r);
+  if (++r.n > 20) return res.status(429).json({ error: '请求太频繁,稍后再试' });
+  tvClean();
+  if (tvCodes.size > 500) return res.status(429).json({ error: '请稍后再试' });
+  let code;
+  do { code = crypto.randomBytes(4).toString('hex').toUpperCase(); } while (tvCodes.has(code));
+  const poll = crypto.randomBytes(16).toString('hex');
+  tvCodes.set(code, { poll, uid: 0, exp: now + 10 * 60e3 });
+  res.json({ code, poll, ttl: 600, base: PUBLIC_URL || `${req.protocol}://${req.get('host')}` });
+});
+app.get('/api/tv/poll', (req, res) => {
+  const code = String(req.query.code || '').toUpperCase();
+  const c = tvCodes.get(code);
+  if (!c || c.poll !== String(req.query.poll || '') || c.exp < Date.now()) return res.json({ status: 'expired' });
+  if (!c.uid) return res.json({ status: 'wait' });
+  tvCodes.delete(code);
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(c.uid);
+  if (!u || !u.enabled) return res.json({ status: 'expired' });
+  newSession(req, res, u.id, 180);
+  res.json({ status: 'ok' });
+});
+app.post('/api/tv/approve', auth, (req, res) => {
+  const c = tvCodes.get(String((req.body && req.body.code) || '').toUpperCase());
+  if (!c || c.exp < Date.now()) return res.status(400).json({ error: '二维码已过期,请在电视上刷新后重新扫码' });
+  c.uid = req.user.id;
+  res.json({ ok: true, nickname: req.user.nickname || req.user.username });
+});
+app.get('/tv', (req, res) => res.sendFile(path.join(__dirname, 'public', 'tv.html')));
+
 // ----- 管理 -----
 const adm = express.Router();
 app.use('/api/admin', auth, adminOnly, adm);
@@ -509,6 +563,7 @@ adm.delete('/libs/:id', (req, res) => {
   const id = +req.params.id;
   delVideos(db.prepare('SELECT id FROM videos WHERE lib_id=?').all(id).map(r => r.id));
   db.prepare('DELETE FROM user_libs WHERE lib_id=?').run(id);
+  db.prepare('DELETE FROM collection_meta WHERE lib_id=?').run(id);
   db.prepare('DELETE FROM libraries WHERE id=?').run(id);
   res.json({ ok: true });
 });
@@ -518,8 +573,21 @@ adm.post('/libs/:id/scan', (req, res) => {
   res.json({ ok: true, task: enqueueScan(lib) });
 });
 adm.get('/libs/:id/collections', (req, res) => {
-  res.json(db.prepare('SELECT collection col,COUNT(*) cnt FROM videos WHERE lib_id=? GROUP BY collection ORDER BY collection').all(+req.params.id)
-    .map(r => ({ col: r.col, name: r.col || '(根目录)', count: r.cnt })));
+  res.json(db.prepare(`SELECT v.collection col,COUNT(*) cnt,IFNULL(cm.category,'') category FROM videos v
+    LEFT JOIN collection_meta cm ON cm.lib_id=v.lib_id AND cm.collection=v.collection
+    WHERE v.lib_id=? GROUP BY v.collection ORDER BY v.collection`).all(+req.params.id)
+    .map(r => ({ col: r.col, name: r.col || '(根目录)', count: r.cnt, category: r.category })));
+});
+adm.get('/categories', (req, res) => {
+  res.json(db.prepare("SELECT DISTINCT category FROM collection_meta WHERE category<>'' ORDER BY category").all().map(r => r.category));
+});
+adm.put('/collection-meta', (req, res) => {
+  const lib = +(req.body && req.body.lib), col = String((req.body && req.body.col) || '');
+  const cat = String((req.body && req.body.category) || '').trim().slice(0, 30);
+  if (!lib) return res.status(400).json({ error: '参数错误' });
+  if (!cat) db.prepare('DELETE FROM collection_meta WHERE lib_id=? AND collection=?').run(lib, col);
+  else db.prepare('INSERT INTO collection_meta VALUES(?,?,?) ON CONFLICT(lib_id,collection) DO UPDATE SET category=excluded.category').run(lib, col, cat);
+  res.json({ ok: true });
 });
 adm.get('/collection', (req, res) => {
   res.json(db.prepare('SELECT id,title,rel_path,seq,mtime,duration,vcodec FROM videos WHERE lib_id=? AND collection=? ORDER BY seq')

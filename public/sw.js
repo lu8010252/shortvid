@@ -1,5 +1,5 @@
 // 只缓存静态外壳,接口与视频一律走网络(不缓存,保证限时和权限实时生效)
-const CACHE = 'shortvid-v1';
+const CACHE = 'shortvid-v2';
 const SHELL = ['/', '/style.css', '/app.js', '/manifest.json'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

@@ -28,22 +28,30 @@
 <div id="app" class="hidden home">
   <main>
     <section id="v-home" class="tab"></section>
-    <section id="v-cols" class="tab hidden"><h2>合集</h2><div id="colGrid" class="grid"></div></section>
-    <section id="v-fav" class="tab hidden"><h2>收藏</h2><div id="favGrid" class="grid"></div></section>
+    <section id="v-cols" class="tab hidden">
+      <div class="colhead"><h2>合集</h2><input id="colQ" type="search" placeholder="搜索合集"><button id="colView" class="ibtn" aria-label="切换视图">▦</button></div>
+      <div id="catChips" class="chips"></div>
+      <div class="sortrow"><span>排序</span><div id="sortChips" class="chips"></div></div>
+      <div id="colGrid" class="grid sm"></div>
+    </section>
+    <section id="v-fav" class="tab hidden"><h2>收藏</h2><div id="favGrid" class="grid sm"></div></section>
     <section id="v-me" class="tab hidden">
       <div class="profile"><div class="avatar" id="meAv"></div><div><div class="nick" id="meNick"></div><div class="sub" id="meSub"></div></div></div>
       <div class="usage hidden" id="meUsage"></div>
       <div class="menu">
         <button id="mHistory">观看历史<i>›</i></button>
         <button id="mAuto"><span>自动横屏<small>横屏视频自动转过来播放</small></span><b id="autoSw" class="sw"></b></button>
+        <button id="mScan"><span>扫码登录电视<small>用手机扫电视上的二维码,电视自动登录当前账号</small></span><i>›</i></button>
+        <button id="mAddr"><span>本站地址<small id="addrTxt"></small></span><i>复制</i></button>
         <button id="mServer" class="hidden">更换服务器地址<i>›</i></button>
         <button id="mPwd" class="hidden">修改密码<i>›</i></button>
         <button id="mAdmin" class="hidden">管理后台<i>›</i></button>
         <button id="mLogout" class="danger">退出登录</button>
       </div>
-      <div class="foot">短视频库 v1.0.0</div>
+      <div class="foot">短视频库 v1.1.0</div>
     </section>
   </main>
+  <div class="homebar"><button id="srcBtn">🔀 随便刷 ▾</button></div>
   <nav id="nav">
     <button data-t="home">首页</button>
     <button data-t="cols">合集</button>
@@ -60,7 +68,25 @@
 
 <div id="sub" class="overlay page hidden">
   <div class="subhead"><button id="sBack" class="back static">‹</button><span id="sTitle"></span></div>
-  <div id="subGrid" class="grid"></div>
+  <div id="subGrid" class="grid sm"></div>
+</div>
+
+<div id="pick" class="sheet hidden">
+  <div class="sheet-bg" id="pickBg"></div>
+  <div class="sheet-box">
+    <div class="sheet-h"><b>选择要看的内容</b><button id="pickX" class="ibtn" aria-label="关闭">✕</button></div>
+    <button id="pickRand" class="menu-btn">🔀 随便刷(全部视频)</button>
+    <div id="pickChips" class="chips"></div>
+    <button id="pickCat" class="menu-btn hidden"></button>
+    <input id="pickQ" type="search" placeholder="搜索合集">
+    <div id="pickGrid" class="grid list"></div>
+  </div>
+</div>
+
+<div id="scan" class="overlay hidden">
+  <video id="scanV" playsinline muted></video>
+  <div class="scanhint">把电视上的二维码放进画面</div>
+  <button id="scanX" class="btn">取消</button>
 </div>
 
 <div id="lock" class="mask hidden">

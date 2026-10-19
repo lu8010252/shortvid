@@ -1,6 +1,6 @@
 {
   "name": "shortvid-app",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "短视频库 Android 壳:首次输入服务器地址,之后直接进入",
   "dependencies": {

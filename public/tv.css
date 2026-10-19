@@ -1,0 +1,90 @@
+/* TV 版样式:兼容 Android 8.0 的老 WebView(不用 inset / aspect-ratio / flex gap / :focus-visible) */
+html{font-size:calc(100vw / 64)}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;overflow:hidden;
+  font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif}
+.hidden{display:none!important}
+.mut{color:#8c8c8c}
+.err{color:#ff6b7f;min-height:1.4rem;font-size:.7rem;margin-top:.4rem}
+.screen{position:absolute;left:0;top:0;right:0;bottom:0;background:#0b0b0b}
+.sc{overflow:hidden}
+
+/* 可聚焦元素 */
+.f{outline:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.f:focus{box-shadow:0 0 0 .16rem #fff,0 0 1.1rem rgba(255,77,103,.9);position:relative;z-index:3}
+.btn{display:inline-block;background:#ff4d67;color:#fff;border-radius:.5rem;padding:.55rem 1.3rem;font-size:.8rem;font-weight:bold;margin:.3rem .6rem .3rem 0}
+.btn.g{background:#2a2a2a;font-weight:normal}
+input{display:block;width:22rem;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:.4rem;padding:.55rem .8rem;font-size:.8rem;margin:.4rem 0;outline:none}
+input:focus{border-color:#ff4d67;box-shadow:0 0 0 .14rem #fff}
+
+/* 登录 */
+#scrLogin{display:-webkit-box;display:flex;align-items:center}
+.loginL{-webkit-box-flex:1;flex:1;padding:0 3rem 0 4rem}
+.loginR{width:26rem;margin-right:4rem;text-align:center}
+.logo{width:3.6rem;height:3.6rem;border-radius:1rem;background:#ff4d67;font-size:1.6rem;line-height:3.6rem;text-align:center}
+.loginL h1{font-size:1.8rem;margin:.6rem 0 1rem}
+.loginL p{font-size:.75rem;line-height:1.7;margin:.2rem 0;color:#aaa}
+.loginL p.big{font-size:1.1rem;color:#fff;margin-bottom:.4rem}
+.code{font-size:1.4rem;letter-spacing:.3rem;color:#ff4d67;margin:.8rem 0 .6rem;font-weight:bold}
+#qr{width:24rem;height:24rem;background:#fff;border-radius:.8rem;padding:0}
+
+/* 首页 */
+.head{position:absolute;left:0;right:0;top:0;height:4.2rem;display:-webkit-box;display:flex;align-items:center;padding:0 2rem}
+.brand{font-size:1.1rem;font-weight:bold;color:#ff4d67;margin-right:2.2rem}
+.tabs{-webkit-box-flex:1;flex:1;white-space:nowrap}
+.tab{display:inline-block;font-size:.95rem;padding:.4rem 1.1rem;margin-right:.5rem;border-radius:.5rem;color:#bbb;background:#161616}
+.tab.on{background:#ff4d67;color:#fff;font-weight:bold}
+.who{font-size:.65rem;color:#777}
+.chipbar{position:absolute;left:0;right:0;top:4.2rem;height:3rem;padding:.2rem 2rem 0;white-space:nowrap}
+.chip{display:inline-block;font-size:.72rem;padding:.3rem .9rem;margin:.3rem .5rem 0 0;border-radius:1rem;background:#1e1e1e;color:#bbb}
+.chip.on{background:#ff4d67;color:#fff}
+.chip.sort{background:#2a2a2a;color:#fff;margin-left:1rem}
+.gridwrap{position:absolute;left:0;right:0;top:7.2rem;bottom:0;padding:.7rem 2rem 1rem}
+.dwrap{top:6.2rem}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);grid-gap:.9rem}
+.card{background:#181818;border-radius:.6rem;position:relative}
+.card .im{position:relative;padding-top:68%;background:#222;border-radius:.6rem .6rem 0 0;overflow:hidden}
+.card .im img{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover}
+.card .badge{position:absolute;right:.3rem;top:.3rem;background:rgba(0,0,0,.65);border-radius:.3rem;padding:.05rem .4rem;font-size:.5rem}
+.card .tx{padding:.4rem .5rem .5rem}
+.card .nm{font-size:.62rem;line-height:1.3;height:1.65rem;overflow:hidden}
+.card .mt{font-size:.5rem;color:#8c8c8c;margin-top:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .pg{height:.18rem;background:#2d2d2d;margin-top:.3rem;border-radius:.1rem;overflow:hidden}
+.card .pg i{display:block;height:100%;background:#ff4d67}
+.empty{color:#777;font-size:.8rem;text-align:center;padding:6rem 1rem;line-height:1.8;grid-column:1 / -1;white-space:pre-line}
+.setbox{padding:1rem 2rem}
+.setbox p{font-size:.75rem;color:#aaa;line-height:1.8;margin:.2rem 0 1rem}
+
+/* 详情 */
+.dhead{position:absolute;left:0;right:0;top:0;height:6.2rem;padding:1.4rem 2rem 0}
+.dtitle{font-size:1.2rem;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhead .mut{font-size:.65rem;margin-top:.3rem}
+.bigbtn{display:block;width:100%;margin-bottom:.9rem;text-align:center;font-size:.9rem;padding:.7rem 1rem;background:#ff4d67;border-radius:.6rem;font-weight:bold}
+
+/* 播放 */
+#scrPlayer{background:#000}
+#tv{position:absolute;left:0;top:0;width:100%;height:100%;background:#000;object-fit:contain}
+.ov{position:absolute;left:0;top:0;right:0;bottom:0;opacity:0;pointer-events:none;-webkit-transition:opacity .2s;transition:opacity .2s}
+.ov.show{opacity:1}
+.ovtop{position:absolute;left:0;right:0;top:0;padding:1.2rem 2rem 2.4rem;background:-webkit-linear-gradient(top,rgba(0,0,0,.75),rgba(0,0,0,0));background:linear-gradient(to bottom,rgba(0,0,0,.75),rgba(0,0,0,0))}
+.ovt{font-size:1rem;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ovc{font-size:.65rem;color:#ccc;margin-top:.25rem}
+.ovmid{position:absolute;left:50%;top:50%;width:5rem;height:5rem;margin:-2.5rem 0 0 -2.5rem;border-radius:50%;background:rgba(0,0,0,.55);text-align:center;line-height:5rem;font-size:2.2rem;display:none}
+.ovmid.show{display:block}
+.ovbot{position:absolute;left:0;right:0;bottom:0;padding:2.4rem 2rem 1.1rem;background:-webkit-linear-gradient(bottom,rgba(0,0,0,.8),rgba(0,0,0,0));background:linear-gradient(to top,rgba(0,0,0,.8),rgba(0,0,0,0))}
+.ovrow{display:-webkit-box;display:flex;align-items:center}
+.ovtime{font-size:.6rem;color:#ddd;width:3.4rem;text-align:center}
+.ovbar{-webkit-box-flex:1;flex:1;height:.28rem;background:rgba(255,255,255,.25);border-radius:.2rem;overflow:hidden}
+.ovbar i{display:block;height:100%;width:0;background:#ff4d67}
+.ovhint{font-size:.55rem;color:#aaa;text-align:center;margin-top:.6rem}
+.pmsg{position:absolute;left:0;right:0;top:50%;margin-top:-1.5rem;text-align:center;font-size:.9rem;color:#ddd;background:rgba(0,0,0,.6);padding:.8rem}
+
+/* 遮罩 */
+.mask{position:absolute;left:0;top:0;right:0;bottom:0;z-index:50;background:rgba(0,0,0,.94);display:-webkit-box;display:flex;align-items:center;justify-content:center;text-align:center}
+.mbox{max-width:30rem}
+.micon{font-size:3.4rem}
+.mbox p{font-size:1rem;line-height:1.6;margin:1rem 0 1.4rem}
+.mbox .btn{margin:0}
+.btn.dis{opacity:.45}
+#toast{position:absolute;left:50%;bottom:3rem;-webkit-transform:translateX(-50%);transform:translateX(-50%);background:rgba(40,40,40,.95);padding:.5rem 1.2rem;border-radius:1rem;font-size:.7rem;z-index:80;opacity:0;-webkit-transition:opacity .25s;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}

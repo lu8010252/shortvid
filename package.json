@@ -1,6 +1,6 @@
 {
   "name": "shortvid",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "自建短视频库:上下滑动播放、合集顺序、孩子账号限时",
   "main": "server.js",
   "scripts": { "start": "node server.js" },

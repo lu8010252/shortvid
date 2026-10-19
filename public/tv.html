@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="/icon-192.png">
+<title>短视频库 TV</title>
+<link rel="stylesheet" href="/tv.css">
+</head>
+<body>
+
+<!-- 登录:扫码 -->
+<div id="scrLogin" class="screen hidden">
+  <div class="loginL">
+    <div class="logo">▶</div>
+    <h1>短视频库</h1>
+    <p class="big">用手机扫右边的二维码</p>
+    <p>手机里登录并点「确认」,电视就会自动进入。</p>
+    <p class="mut">没有登录过?在手机上登录一次即可。<br>二维码里的地址: <span id="pairUrl"></span></p>
+    <div id="pairCode" class="code"></div>
+    <div class="row">
+      <div id="btnManual" class="f btn" tabindex="-1">用账号密码登录</div>
+      <div id="btnRefresh" class="f btn g" tabindex="-1">刷新二维码</div>
+    </div>
+    <form id="manual" class="hidden" autocomplete="off">
+      <input id="fu" placeholder="账号" autocomplete="off">
+      <input id="fp" type="password" placeholder="密码" autocomplete="off">
+      <div id="btnLogin" class="f btn" tabindex="-1">登录</div>
+    </form>
+    <div id="loginErr" class="err"></div>
+  </div>
+  <div class="loginR"><canvas id="qr" width="420" height="420"></canvas></div>
+</div>
+
+<!-- 首页 -->
+<div id="scrHome" class="screen hidden">
+  <div class="head"><div class="brand">▶ 短视频库</div><div id="tabs" class="tabs"></div><div id="who" class="who"></div></div>
+  <div id="chipBar" class="chipbar sc"></div>
+  <div id="gridWrap" class="gridwrap sc"><div id="homeBody"></div></div>
+</div>
+
+<!-- 合集详情 -->
+<div id="scrDetail" class="screen hidden">
+  <div class="dhead"><div id="dTitle" class="dtitle"></div><div id="dSub" class="mut"></div></div>
+  <div id="dWrap" class="gridwrap dwrap sc"><div id="dBody"></div></div>
+</div>
+
+<!-- 播放 -->
+<div id="scrPlayer" class="screen hidden">
+  <video id="tv" playsinline></video>
+  <div id="ov" class="ov">
+    <div class="ovtop"><div id="ovT" class="ovt"></div><div id="ovC" class="ovc"></div></div>
+    <div id="ovMid" class="ovmid"></div>
+    <div class="ovbot">
+      <div class="ovrow"><div id="ovTime" class="ovtime"></div><div class="ovbar"><i id="ovFill"></i></div><div id="ovDur" class="ovtime"></div></div>
+      <div class="ovhint">▲上一个　▼下一个　◀▶ 快退/快进　确定 暂停　长按确定 收藏　返回 退出</div>
+    </div>
+  </div>
+  <div id="pMsg" class="pmsg hidden"></div>
+</div>
+
+<!-- 锁定 / 休息 -->
+<div id="mask" class="mask hidden">
+  <div class="mbox"><div id="mIcon" class="micon"></div><p id="mMsg"></p><div id="mBtn" class="f btn" tabindex="-1"></div></div>
+</div>
+<div id="toast"></div>
+
+<script src="/qrcode.js"></script>
+<script src="/tv.js"></script>
+</body>
+</html>

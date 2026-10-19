@@ -1,0 +1,15 @@
+# 直接贴这个 compose 就能部署,不用下载源码。镜像支持 amd64 / arm64 / armv7。
+services:
+  shortvid:
+    image: ghcr.io/lu8010252/shortvid:latest
+    container_name: shortvid
+    restart: unless-stopped
+    ports:
+      - "8088:3000"          # 左边是对外端口,按需修改
+    environment:
+      - TZ=Asia/Shanghai
+      - ADMIN_USER=admin     # 仅首次启动创建管理员时有效
+      - ADMIN_PASS=changeme123
+    volumes:
+      - ./data:/data         # 数据库、封面
+      - /video:/video:ro     # 左边改成你服务器上存放短视频的目录(只读挂载)

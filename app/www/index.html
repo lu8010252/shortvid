@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>短视频库</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0b0b0b;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+#f{width:min(340px,86vw);display:flex;flex-direction:column;gap:12px;text-align:center}
+.logo{width:64px;height:64px;border-radius:18px;background:#ff4d67;margin:0 auto;font-size:28px;line-height:64px}
+h1{margin:4px 0 0;font-size:22px}
+p{margin:0;color:#8c8c8c;font-size:14px;line-height:1.6}
+input{background:#1a1a1a;border:1px solid #262626;color:#fff;border-radius:10px;padding:13px 14px;font:inherit;outline:none;width:100%}
+input:focus{border-color:#ff4d67}
+button{background:#ff4d67;color:#fff;border:0;border-radius:10px;padding:13px;font:inherit;font-weight:600}
+button:disabled{opacity:.5}
+#e{min-height:20px;font-size:14px;color:#ff6b7f;line-height:1.5}
+</style>
+</head>
+<body>
+<form id="f" class="hidden">
+  <div class="logo">▶</div>
+  <h1>短视频库</h1>
+  <p id="tip">请输入服务器地址</p>
+  <input id="u" placeholder="例如 https://video.example.com" inputmode="url" autocapitalize="off" autocomplete="off" autocorrect="off">
+  <button id="b">进入</button>
+  <div id="e"></div>
+</form>
+<script>
+(function () {
+  var KEY = 'serverUrl';
+  var f = document.getElementById('f'), u = document.getElementById('u'), b = document.getElementById('b'),
+      e = document.getElementById('e'), tip = document.getElementById('tip');
+  function get() { try { return localStorage.getItem(KEY) || ''; } catch (x) { return ''; } }
+  function set(v) { try { localStorage.setItem(KEY, v); } catch (x) { /* ignore */ } }
+  function norm(s) {
+    s = (s || '').trim();
+    if (!s) return '';
+    if (!/^https?:\/\//i.test(s)) s = 'http://' + s;
+    return s.replace(/\/+$/, '');
+  }
+  // 探测服务器是否可达(只要有任何响应就算通)
+  function probe(url) {
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var t = setTimeout(function () { if (ctl) ctl.abort(); }, 6000);
+    return fetch(url + '/api/me', { mode: 'no-cors', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function () { clearTimeout(t); return true; }, function () { clearTimeout(t); return false; });
+  }
+  function go(url) { location.replace(url + '/'); }
+  function show(msg) { f.style.display = 'flex'; e.textContent = msg || ''; b.disabled = false; b.textContent = '进入'; }
+
+  f.style.display = 'none';
+  f.onsubmit = function (ev) {
+    ev.preventDefault();
+    var url = norm(u.value);
+    if (!url) { e.textContent = '请输入服务器地址'; return; }
+    b.disabled = true; b.textContent = '连接中…'; e.textContent = '';
+    probe(url).then(function (ok) {
+      if (!ok) { show('连不上 ' + url + ',请检查地址和网络'); return; }
+      set(url); go(url);
+    });
+  };
+
+  var saved = get(), change = /[?&]change=1/.test(location.search);
+  u.value = saved;
+  if (saved && !change) {
+    f.style.display = 'flex'; tip.textContent = '正在连接…'; u.style.display = 'none'; b.style.display = 'none';
+    probe(saved).then(function (ok) {
+      if (ok) { go(saved); return; }
+      tip.textContent = '请输入服务器地址'; u.style.display = ''; b.style.display = '';
+      show('连不上 ' + saved + ',请检查网络,或改一下地址');
+    });
+  } else {
+    show('');
+  }
+})();
+</script>
+</body>
+</html>

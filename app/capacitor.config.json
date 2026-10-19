@@ -1,0 +1,15 @@
+{
+  "appId": "com.shortvid.app",
+  "appName": "短视频库",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#000000",
+    "appendUserAgent": "ShortvidApp"
+  }
+}

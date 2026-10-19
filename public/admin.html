@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0b0b">
+<link rel="icon" href="/icon-192.png">
+<title>管理后台 - 短视频库</title>
+<style>
+:root{--red:#ff4d67;--bg:#0b0b0b;--card:#161616;--in:#111;--line:#262626;--mut:#8c8c8c}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+button{font:inherit;color:inherit;cursor:pointer;border:0}
+.wrap{max-width:900px;margin:0 auto;padding:14px 14px 60px}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.top h1{font-size:20px;margin:0;flex:1}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px}
+.ph h2{margin:0;font-size:17px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.stat{background:#2a161a;border-radius:12px;padding:14px 8px;text-align:center}
+.stat b{display:block;font-size:26px;color:var(--red)}.stat span{font-size:13px;color:var(--mut)}
+.btn{background:var(--red);border-radius:10px;padding:8px 14px;font-weight:600;font-size:14px}
+.btn.g{background:#262626;font-weight:500}
+.btn.d{background:#2d141a;color:var(--red);border:1px solid #4a1f29;font-weight:500}
+.btn.s{padding:6px 11px;font-size:13px}
+.btn:disabled{opacity:.4}
+.row{background:var(--in);border-radius:12px;padding:12px;margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row .m{flex:1;min-width:200px}
+.row .n{font-weight:600}.row .s{color:var(--mut);font-size:13px;margin-top:3px;word-break:break-all;line-height:1.5}
+.row .ops{display:flex;gap:6px;flex-wrap:wrap}
+.tag{display:inline-block;font-size:11px;border-radius:5px;padding:1px 7px;background:#12304a;color:#5aaef5;margin-right:6px}
+.tag.w{background:#4a3512;color:#f5b55a}.tag.r{background:#4a1220;color:#ff7a90}.tag.ok{background:#123a24;color:#5adf8f}
+input,select{background:var(--in);border:1px solid var(--line);color:#fff;border-radius:10px;padding:9px 11px;font:inherit;width:100%;outline:none}
+input:focus,select:focus{border-color:var(--red)}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chk{display:flex;align-items:center;gap:8px;margin:7px 0;color:#ddd;font-size:14px}.chk input{width:auto}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:4vh 12px;overflow:auto}
+.modal{background:#181818;border:1px solid var(--line);border-radius:16px;padding:18px;width:min(560px,100%)}
+.modal h3{margin:0 0 6px}
+.mf{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.hint{font-size:12px;color:var(--mut);margin-top:5px;line-height:1.5}
+.dir{padding:10px 12px;border-bottom:1px solid #222;cursor:pointer}.dir:hover{background:#202020}
+.ep{display:flex;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid #222;font-size:14px}
+.ep .no{width:34px;color:var(--mut);text-align:right}.ep .nm{flex:1;word-break:break-all;line-height:1.4}.ep .nm small{color:var(--mut);display:block}
+.ep button{background:#262626;border-radius:8px;width:30px;height:30px}
+.task{font-size:13px;padding:8px 0;border-bottom:1px solid #222;display:flex;gap:8px;align-items:flex-start}
+.task .t{flex:1;line-height:1.5}.task time{color:var(--mut);white-space:nowrap}
+#toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:#333;padding:10px 18px;border-radius:20px;font-size:14px;z-index:99;opacity:0;transition:.25s;pointer-events:none}
+#toast.show{opacity:1}
+.empty{color:#777;text-align:center;padding:22px}
+@media(max-width:520px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>管理后台</h1><button class="btn g s" id="goHome">返回前台</button></div>
+
+  <div class="panel"><div class="ph"><h2>📊 数据统计</h2></div><div class="stats" id="stats"></div><div class="hint" id="warn"></div></div>
+
+  <div class="panel"><div class="ph"><h2>📁 视频库管理</h2><button class="btn" id="addLib">+ 添加</button></div>
+    <div class="hint" style="margin:-6px 0 12px">每个视频库对应一个文件夹;其下每一层子文件夹会自动成为一个「合集」,按集数顺序播放。</div>
+    <div id="libs"></div></div>
+
+  <div class="panel"><div class="ph"><h2>👨‍👩‍👧 用户管理</h2><button class="btn" id="addUser">+ 添加</button></div><div id="users"></div></div>
+
+  <div class="panel"><div class="ph"><h2>✅ 后台任务</h2><button class="btn g s" id="clearTasks">清除已完成</button></div><div id="tasks"></div></div>
+</div>
+<div id="toast"></div>
+<script src="/admin.js"></script>
+</body>
+</html>

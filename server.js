@@ -12,6 +12,8 @@ const DATA_DIR = process.env.DATA_DIR || '/data';
 const VIDEO_ROOT = path.resolve(process.env.VIDEO_ROOT || '/video');
 const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 const THUMB_DIR = path.join(DATA_DIR, 'thumbs');
+const H264_DIR = path.join(DATA_DIR, 'h264');
+fs.mkdirSync(H264_DIR, { recursive: true });
 fs.mkdirSync(THUMB_DIR, { recursive: true });
 
 const db = new Database(path.join(DATA_DIR, 'app.db'));
@@ -445,12 +447,37 @@ app.get('/api/thumb/:id', auth, (req, res) => {
   res.setHeader('Cache-Control', 'private, max-age=604800');
   res.sendFile(f);
 });
-app.get('/api/stream/:id', auth, (req, res) => {
+// 按需转 H.264(给老电视/投影用):结果缓存在 DATA_DIR/h264,同一视频并发请求共用一次转码
+const h264Jobs = new Map();
+function ensureH264(v, src) {
+  const out = path.join(H264_DIR, v.id + '_' + Math.floor(v.mtime || 0) + '.mp4');
+  if (fs.existsSync(out)) return Promise.resolve(out);
+  if (h264Jobs.has(out)) return h264Jobs.get(out);
+  const tmp = out + '.part.mp4';
+  const job = new Promise((resolve, reject) => {
+    execFile('ffmpeg', ['-y', '-v', 'error', '-i', src, '-map', '0:v:0', '-map', '0:a:0?',
+      '-vf', "scale='if(gt(iw,ih),min(1280,iw),min(720,iw))':-2,format=yuv420p",
+      '-c:v', 'libx264', '-profile:v', 'main', '-level', '4.0', '-preset', 'veryfast', '-crf', '26',
+      '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-movflags', '+faststart', tmp],
+    { timeout: 15 * 60 * 1000, maxBuffer: 1 << 20 }, err => {
+      if (err) { fs.unlink(tmp, () => {}); return reject(err); }
+      fs.rename(tmp, out, e => e ? reject(e) : resolve(out));
+    });
+  }).finally(() => h264Jobs.delete(out));
+  h264Jobs.set(out, job);
+  return job;
+}
+app.get('/api/stream/:id', auth, async (req, res) => {
   const v = videoFor(req.user, +req.params.id);
   if (!v) return res.status(404).end();
   const ls = lockState(req.user);
   if (ls.locked) return res.status(403).json(ls);
-  const file = path.join(v.lib_path, v.rel_path);
+  let file = path.join(v.lib_path, v.rel_path);
+  const codec = String(v.vcodec || '').toLowerCase();
+  // tv=1:已知不是 H.264 的(HEVC 等)自动转;h264=1:客户端播放出错后强制转
+  if (req.query.h264 === '1' || (req.query.tv === '1' && codec && codec !== 'h264')) {
+    try { file = await ensureH264(v, file); } catch (e) { console.error('h264 转码失败', v.id, e.message); return res.status(500).end(); }
+  }
   fs.stat(file, (err, st) => {
     if (err) return res.status(404).end();
     const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';

@@ -413,7 +413,8 @@
     P.resumeId = P.resume && it.pos > 1 && !it.finished ? it.id : 0;
     P.resume = false;
     V.poster = '/api/thumb/' + it.id;
-    V.src = '/api/stream/' + it.id;
+    P.fb = false;
+    V.src = '/api/stream/' + it.id + '?tv=1';
     $('#ovT').textContent = it.title;
     updateInfo();
     $('#ovFill').style.width = '0'; $('#ovTime').textContent = '0:00'; $('#ovDur').textContent = fmtT(it.duration);
@@ -512,6 +513,15 @@
   });
   V.addEventListener('error', function () {
     if (S.screen !== 'player' || !V.getAttribute('src')) return;
+    var it0 = cur();
+    if (it0 && !P.fb) {
+      // 先让服务器转成 H.264 再试一次(老投影不支持 H.265 等编码)
+      P.fb = true;
+      showMsg('正在转换视频格式,请稍等…');
+      V.src = '/api/stream/' + it0.id + '?h264=1';
+      playNow();
+      return;
+    }
     api('/api/heartbeat', { seconds: 0 }).then(function (r) {
       if (r.lock.locked) { doLock(r.lock.message); return; }
       showMsg('这个视频暂时播放不了(可能是格式不支持),3 秒后播放下一个');

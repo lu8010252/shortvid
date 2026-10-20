@@ -88,3 +88,7 @@ input:focus{border-color:#ff4d67;box-shadow:0 0 0 .14rem #fff}
 .btn.dis{opacity:.45}
 #toast{position:absolute;left:50%;bottom:3rem;-webkit-transform:translateX(-50%);transform:translateX(-50%);background:rgba(40,40,40,.95);padding:.5rem 1.2rem;border-radius:1rem;font-size:.7rem;z-index:80;opacity:0;-webkit-transition:opacity .25s;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
+
+/* TV APK 原生播放器:画面在网页下面,网页背景要透明 */
+html.np,html.np body,html.np #scrPlayer{background:transparent!important}
+html.np #tv{display:none}

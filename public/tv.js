@@ -57,7 +57,49 @@
   var SORTS = [['recent', '最近观看'], ['name', '名称'], ['count', '集数'], ['added', '最新添加'], ['todo', '没看完']];
   var TABS = [['cols', '合集'], ['rand', '随便刷'], ['fav', '收藏'], ['hist', '历史'], ['set', '设置']];
   var SCOPES = { login: '#scrLogin', home: '#scrHome', detail: '#scrDetail' };
-  var V = $('#tv');
+  var NP = !!(window.ShortvidPlayer && window.ShortvidPlayer.available && window.ShortvidPlayer.available());
+  if (NP) document.documentElement.className += ' np';
+  var V = NP ? makeNative() : $('#tv');
+
+  // TV APK 内的原生播放器(ExoPlayer),接口做成和 <video> 一样,下面的播放逻辑不用改
+  function makeNative() {
+    var N = window.ShortvidPlayer, st = {}, want = false, src = '', fired = {}, ls = {}, seekAt = 0, seekTo = 0;
+    var o = { error: null, poster: '' };
+    function fire(n) { var a = ls[n] || []; for (var i = 0; i < a.length; i++) { try { a[i].call(o); } catch (e) { /* ignore */ } } }
+    function abs(u) { return /^https?:/i.test(u) ? u : location.origin + u; }
+    function reset() { fired = {}; o.error = null; st = {}; }
+    setInterval(function () {
+      var j; try { j = JSON.parse(N.state()); } catch (e) { return; }
+      st = j;
+      if (!src) return;
+      if (j.dur > 0 && !fired.meta) { fired.meta = 1; fire('loadedmetadata'); }
+      var pl = j.st === 3 && j.pw === 1;
+      if (pl && !fired.playing) { fired.playing = 1; fire('playing'); }
+      if (!pl) fired.playing = 0;
+      if (pl) fire('timeupdate');
+      if (j.st === 4 && !fired.ended) { fired.ended = 1; fire('ended'); }
+      if (j.err && !fired.err) { fired.err = 1; o.error = { code: 4, message: j.err }; fire('error'); }
+    }, 300);
+    Object.defineProperty(o, 'src', { get: function () { return src; }, set: function (u) { src = u; want = false; reset(); N.open(abs(u), 0); } });
+    Object.defineProperty(o, 'paused', { get: function () { return !want; } });
+    Object.defineProperty(o, 'ended', { get: function () { return st.st === 4; } });
+    Object.defineProperty(o, 'duration', { get: function () { return (st.dur || 0) / 1000; } });
+    Object.defineProperty(o, 'currentTime', {
+      get: function () { return Date.now() - seekAt < 700 ? seekTo : (st.pos || 0) / 1000; },
+      set: function (t) { seekTo = t; seekAt = Date.now(); N.seek(Math.round(t * 1000)); }
+    });
+    Object.defineProperty(o, 'readyState', { get: function () { return st.st === 3 ? 4 : (st.st === 2 ? 2 : (st.dur > 0 ? 1 : 0)); } });
+    Object.defineProperty(o, 'networkState', { get: function () { return 1; } });
+    Object.defineProperty(o, 'videoWidth', { get: function () { return st.w || 0; } });
+    Object.defineProperty(o, 'videoHeight', { get: function () { return st.h || 0; } });
+    o.play = function () { want = true; N.play(); };
+    o.pause = function () { want = false; N.pause(); setTimeout(function () { fire('pause'); }, 0); };
+    o.removeAttribute = function () { src = ''; reset(); want = false; N.close(); };
+    o.getAttribute = function () { return src || null; };
+    o.load = function () {};
+    o.addEventListener = function (n, f) { (ls[n] = ls[n] || []).push(f); };
+    return o;
+  }
   var locked = false, resting = false;
 
   function show(name) {
@@ -489,7 +531,7 @@
   }
   function dbgInfo() {
     var e = V.error;
-    return '[错误码' + (e ? e.code : '无') + ' 就绪' + V.readyState + ' 网络' + V.networkState + ' ' + (V.videoWidth || 0) + 'x' + (V.videoHeight || 0) + ']';
+    return '[错误码' + (e ? e.code : '无') + ' 就绪' + V.readyState + ' 网络' + V.networkState + ' ' + (V.videoWidth || 0) + 'x' + (V.videoHeight || 0) + (NP ? ' 原生' : '') + (e && e.message ? ' ' + e.message : '') + ']';
   }
   // 先让服务器转成 H.264 再试一次(老投影对 H.265/高规格视频常常既不报错也不出画面)
   function tryFallback() {

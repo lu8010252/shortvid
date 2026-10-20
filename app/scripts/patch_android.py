@@ -102,6 +102,14 @@ gradle = os.path.join(root, 'build.gradle')
 s = read(gradle)
 s = re.sub(r'versionCode\s+\d+', 'versionCode ' + version_code, s, count=1)
 s = re.sub(r'versionName\s+"[^"]*"', 'versionName "' + version_name + '"', s, count=1)
+if IS_TV:
+    # TV 版内置原生播放器(ExoPlayer):部分国产投影的系统 WebView 播不了视频
+    dep = ('\n    implementation "androidx.media3:media3-exoplayer:1.3.1"'
+           '\n    implementation "androidx.media3:media3-datasource:1.3.1"\n')
+    if 'media3-exoplayer' not in s:
+        s, n = re.subn(r'dependencies\s*\{', lambda m: m.group(0) + dep, s, count=1)
+        if n != 1:
+            raise SystemExit('build.gradle 里找不到 dependencies 块')
 write(gradle, s)
 
 # 5. MainActivity:
@@ -428,6 +436,212 @@ TV_CODE = r'''
 '''
 
 
+PLAYER_IMPORTS = '''import android.graphics.Color;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
+import android.view.SurfaceView;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.webkit.CookieManager;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.common.VideoSize;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import java.util.HashMap;
+import java.util.Map;'''
+
+PLAYER_INIT = '''            getBridge().getWebView().addJavascriptInterface(new PlayerApi(), "ShortvidPlayer");'''
+
+PLAYER_CODE = r'''
+    // ---------- TV:原生播放器(ExoPlayer),画面在网页下面,网页背景透明 ----------
+    private ExoPlayer exo;
+    private FrameLayout exoBox;
+    private SurfaceView exoView;
+    private volatile String exoState = "{\"st\":1,\"pos\":0,\"dur\":0,\"pw\":0,\"w\":0,\"h\":0,\"err\":\"\"}";
+    private volatile String exoErr = "";
+    private volatile boolean exoPending = false;
+    private final Handler exoH = new Handler(Looper.getMainLooper());
+    private final Runnable exoTick = new Runnable() {
+        @Override
+        public void run() {
+            exoSnapshot();
+            exoH.postDelayed(this, 250);
+        }
+    };
+
+    private static String exoQ(String s) {
+        StringBuilder b = new StringBuilder("\"");
+        if (s != null) {
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c == '"' || c == '\\') b.append('\\').append(c);
+                else if (c < 32 || c > 126) b.append(' ');
+                else b.append(c);
+            }
+        }
+        return b.append('"').toString();
+    }
+
+    private void exoSnapshot() {
+        if (exo == null || exoPending) return;
+        long dur = exo.getDuration();
+        VideoSize vs = exo.getVideoSize();
+        exoState = "{\"st\":" + exo.getPlaybackState() + ",\"pos\":" + exo.getCurrentPosition()
+            + ",\"dur\":" + (dur < 0 ? 0 : dur) + ",\"pw\":" + (exo.getPlayWhenReady() ? 1 : 0)
+            + ",\"w\":" + vs.width + ",\"h\":" + vs.height + ",\"err\":" + exoQ(exoErr) + "}";
+    }
+
+    private void exoFit(VideoSize vs) {
+        if (exoBox == null || exoView == null || vs.width <= 0 || vs.height <= 0) return;
+        int bw = exoBox.getWidth(), bh = exoBox.getHeight();
+        if (bw <= 0 || bh <= 0) {
+            bw = getResources().getDisplayMetrics().widthPixels;
+            bh = getResources().getDisplayMetrics().heightPixels;
+        }
+        float vw = vs.width * (vs.pixelWidthHeightRatio > 0 ? vs.pixelWidthHeightRatio : 1f);
+        float sc = Math.min(bw / vw, bh / (float) vs.height);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+            Math.max(2, Math.round(vw * sc)), Math.max(2, Math.round(vs.height * sc)), Gravity.CENTER);
+        exoView.setLayoutParams(lp);
+    }
+
+    private void exoEnsure() {
+        if (exo != null) return;
+        android.webkit.WebView wv = getBridge().getWebView();
+        ViewGroup parent = (ViewGroup) wv.getParent();
+        exoBox = new FrameLayout(this);
+        exoView = new SurfaceView(this);
+        exoBox.addView(exoView, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        parent.addView(exoBox, 0, new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        wv.setBackgroundColor(Color.TRANSPARENT);
+        DefaultRenderersFactory rf = new DefaultRenderersFactory(this).setEnableDecoderFallback(true);
+        exo = new ExoPlayer.Builder(this, rf).build();
+        exo.setVideoSurfaceView(exoView);
+        exo.addListener(new Player.Listener() {
+            @Override
+            public void onVideoSizeChanged(VideoSize vs) {
+                exoFit(vs);
+            }
+
+            @Override
+            public void onPlayerError(PlaybackException e) {
+                Throwable c = e.getCause();
+                exoErr = e.getErrorCodeName() + (c != null ? " " + c.getClass().getSimpleName() + ":" + c.getMessage() : "");
+                exoSnapshot();
+            }
+        });
+        exoH.post(exoTick);
+    }
+
+    private void exoRelease() {
+        exoH.removeCallbacks(exoTick);
+        if (exo != null) {
+            try { exo.release(); } catch (Exception e) { /* ignore */ }
+            exo = null;
+        }
+    }
+
+    public class PlayerApi {
+        @JavascriptInterface
+        public boolean available() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public void open(final String url, final long startMs) {
+            exoErr = "";
+            exoPending = true;
+            exoState = "{\"st\":1,\"pos\":0,\"dur\":0,\"pw\":0,\"w\":0,\"h\":0,\"err\":\"\"}";
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        exoEnsure();
+                        String cookie = CookieManager.getInstance().getCookie(url);
+                        DefaultHttpDataSource.Factory f = new DefaultHttpDataSource.Factory()
+                            .setAllowCrossProtocolRedirects(true)
+                            .setConnectTimeoutMs(15000)
+                            .setReadTimeoutMs(600000);
+                        if (cookie != null) {
+                            Map<String, String> h = new HashMap<String, String>();
+                            h.put("Cookie", cookie);
+                            f.setDefaultRequestProperties(h);
+                        }
+                        exo.setPlayWhenReady(false);
+                        exo.setMediaSource(new DefaultMediaSourceFactory(f).createMediaSource(MediaItem.fromUri(url)));
+                        exo.prepare();
+                        if (startMs > 0) exo.seekTo(startMs);
+                        exoBox.setVisibility(android.view.View.VISIBLE);
+                    } catch (Exception e) {
+                        exoErr = "open " + e.getClass().getSimpleName() + ":" + e.getMessage();
+                    } finally {
+                        exoPending = false;
+                        exoSnapshot();
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void play() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (exo != null) exo.setPlayWhenReady(true);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void pause() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (exo != null) exo.setPlayWhenReady(false);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void seek(final long ms) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (exo != null) exo.seekTo(Math.max(0, ms));
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void close() {
+            exoState = "{\"st\":1,\"pos\":0,\"dur\":0,\"pw\":0,\"w\":0,\"h\":0,\"err\":\"\"}";
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (exo != null) {
+                        exo.stop();
+                        exo.clearMediaItems();
+                    }
+                    if (exoBox != null) exoBox.setVisibility(android.view.View.GONE);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public String state() {
+            return exoState;
+        }
+    }
+'''
+
+
 def jstr(text):
     """转成 Java 字符串字面量(ASCII + \\uXXXX,避免编译器编码问题)。"""
     return json.dumps(text, ensure_ascii=True)
@@ -435,8 +649,12 @@ def jstr(text):
 
 java = JAVA
 if IS_TV:
-    java = (java.replace('__TV_IMPORTS__', TV_IMPORTS).replace('__TV_INIT__', TV_INIT)
-            .replace('__TV_CODE__', TV_CODE.replace('__SETUP_PAGE__', jstr(SETUP_HTML)).replace('__DONE_PAGE__', jstr(DONE_HTML))))
+    tv_code = TV_CODE.replace('__SETUP_PAGE__', jstr(SETUP_HTML)).replace('__DONE_PAGE__', jstr(DONE_HTML))
+    tv_code = tv_code.replace('if (setupServer != null) setupServer.shutdown();',
+                              'if (setupServer != null) setupServer.shutdown();\n        exoRelease();', 1)
+    java = (java.replace('__TV_IMPORTS__', TV_IMPORTS + '\n' + PLAYER_IMPORTS)
+            .replace('__TV_INIT__', TV_INIT + '\n' + PLAYER_INIT)
+            .replace('__TV_CODE__', tv_code + PLAYER_CODE))
 else:
     java = java.replace('__TV_IMPORTS__', '').replace('__TV_INIT__', '').replace('__TV_CODE__', '')
 

@@ -415,6 +415,7 @@
     V.poster = '/api/thumb/' + it.id;
     P.fb = false;
     V.src = '/api/stream/' + it.id + '?tv=1';
+    armStall(8000);
     $('#ovT').textContent = it.title;
     updateInfo();
     $('#ovFill').style.width = '0'; $('#ovTime').textContent = '0:00'; $('#ovDur').textContent = fmtT(it.duration);
@@ -435,7 +436,7 @@
     });
   }
   function stopVideo() {
-    saveProgress();
+    saveProgress(); clearTimeout(P.stallT);
     try { V.pause(); V.removeAttribute('src'); V.load(); } catch (e) { /* ignore */ }
     clearTimeout(P.errT);
   }
@@ -484,6 +485,32 @@
     clearTimeout(P.seekT);
     P.seekT = setTimeout(function () { try { V.currentTime = P.target; } catch (e) { /* ignore */ } P.target = null; }, 400);
   }
+  function dbgInfo() {
+    var e = V.error;
+    return '[错误码' + (e ? e.code : '无') + ' 就绪' + V.readyState + ' 网络' + V.networkState + ' ' + (V.videoWidth || 0) + 'x' + (V.videoHeight || 0) + ']';
+  }
+  // 先让服务器转成 H.264 再试一次(老投影对 H.265/高规格视频常常既不报错也不出画面)
+  function tryFallback() {
+    var it0 = cur();
+    if (!it0 || P.fb) return false;
+    P.fb = true;
+    showMsg('正在转换视频格式,请稍等…');
+    V.src = '/api/stream/' + it0.id + '?h264=1';
+    playNow();
+    armStall(120000);
+    return true;
+  }
+  function armStall(ms) {
+    clearTimeout(P.stallT);
+    var idx = P.i;
+    P.stallT = setTimeout(function () {
+      if (S.screen !== 'player' || P.i !== idx || locked || resting) return;
+      if (!V.paused && V.currentTime > 0.2) return;
+      if (V.paused && V.readyState >= 3) { showMsg('按「确定」键开始播放'); return; }
+      if (tryFallback()) return;
+      showMsg('视频一直没有画面,请把下面这行发给开发者\n' + dbgInfo());
+    }, ms);
+  }
   function closePlayer() {
     if (S.screen !== 'player') return;
     stopVideo();
@@ -501,7 +528,7 @@
     if (P.target === null) updateBar(V.currentTime);
     if (!V.paused && Date.now() - P.lastSave > 5000) saveProgress();
   });
-  V.addEventListener('playing', function () { hideMsg(); clearTimeout(P.errT); showOv(); });
+  V.addEventListener('playing', function () { hideMsg(); clearTimeout(P.errT); clearTimeout(P.stallT); showOv(); });
   V.addEventListener('pause', function () { if (S.screen === 'player' && !V.ended) { showOv(); saveProgress(); } });
   V.addEventListener('ended', function () {
     var it = cur(); if (!it) return;
@@ -513,18 +540,10 @@
   });
   V.addEventListener('error', function () {
     if (S.screen !== 'player' || !V.getAttribute('src')) return;
-    var it0 = cur();
-    if (it0 && !P.fb) {
-      // 先让服务器转成 H.264 再试一次(老投影不支持 H.265 等编码)
-      P.fb = true;
-      showMsg('正在转换视频格式,请稍等…');
-      V.src = '/api/stream/' + it0.id + '?h264=1';
-      playNow();
-      return;
-    }
+    if (tryFallback()) return;
     api('/api/heartbeat', { seconds: 0 }).then(function (r) {
       if (r.lock.locked) { doLock(r.lock.message); return; }
-      showMsg('这个视频暂时播放不了(可能是格式不支持),3 秒后播放下一个');
+      showMsg('这个视频暂时播放不了,3 秒后播放下一个\n' + dbgInfo());
       var idx = P.i;
       P.errT = setTimeout(function () { if (S.screen === 'player' && P.i === idx) go(1); }, 3000);
     }, function () { showMsg('网络不通,请检查服务器'); });

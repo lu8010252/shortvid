@@ -77,7 +77,7 @@ input:focus{border-color:#ff4d67;box-shadow:0 0 0 .14rem #fff}
 .ovbar{-webkit-box-flex:1;flex:1;height:.28rem;background:rgba(255,255,255,.25);border-radius:.2rem;overflow:hidden}
 .ovbar i{display:block;height:100%;width:0;background:#ff4d67}
 .ovhint{font-size:.55rem;color:#aaa;text-align:center;margin-top:.6rem}
-.pmsg{position:absolute;left:0;right:0;top:50%;margin-top:-1.5rem;text-align:center;font-size:.9rem;color:#ddd;background:rgba(0,0,0,.6);padding:.8rem}
+.pmsg{white-space:pre-line;position:absolute;left:0;right:0;top:50%;margin-top:-1.5rem;text-align:center;font-size:.9rem;color:#ddd;background:rgba(0,0,0,.6);padding:.8rem}
 
 /* 遮罩 */
 .mask{position:absolute;left:0;top:0;right:0;bottom:0;z-index:50;background:rgba(0,0,0,.94);display:-webkit-box;display:flex;align-items:center;justify-content:center;text-align:center}

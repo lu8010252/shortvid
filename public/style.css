@@ -152,3 +152,24 @@ body.imm .slide .bar{bottom:0}
   .grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
   .tab{padding-left:max(14px,calc((100vw - 1100px)/2));padding-right:max(14px,calc((100vw - 1100px)/2))}
 }
+
+/* 平板竖屏/小宽屏(600-899):网格列数、字号、按钮略放大 */
+@media (min-width:600px) and (max-width:899px){
+  .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+  .grid.sm{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .tab{padding-left:20px;padding-right:20px}
+  .slide .side button{width:58px;height:58px;font-size:12px}
+  .slide .side svg{width:30px;height:30px}
+  .slide .info{right:100px}
+  .slide .info .t{font-size:18px}
+  #nav button{font-size:16px}
+}
+/* 平板/电脑横屏:按钮和标题贴着居中的 9:16 画面,不再散在屏幕两侧 */
+@media (min-width:700px) and (min-aspect-ratio:1/1){
+  .slide .side{right:max(10px,calc(50vw - 28vh + 10px));gap:20px}
+  .slide .side button{width:58px;height:58px;font-size:12px}
+  .slide .side svg{width:30px;height:30px}
+  .slide .info{left:max(14px,calc(50vw - 28vh + 14px));right:max(84px,calc(50vw - 28vh + 84px))}
+  .overlay.page{padding-left:max(14px,calc((100vw - 1100px)/2));padding-right:max(14px,calc((100vw - 1100px)/2))}
+  #nav{padding-left:max(0px,calc((100vw - 700px)/2));padding-right:max(0px,calc((100vw - 700px)/2))}
+}

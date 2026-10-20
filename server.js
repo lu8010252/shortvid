@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS progress(
 CREATE TABLE IF NOT EXISTS favorites(user_id INTEGER, video_id INTEGER, created_at INTEGER, PRIMARY KEY(user_id, video_id));
 CREATE TABLE IF NOT EXISTS usage(user_id INTEGER, day TEXT, seconds INTEGER DEFAULT 0, PRIMARY KEY(user_id, day));
 CREATE TABLE IF NOT EXISTS collection_meta(lib_id INTEGER, collection TEXT, category TEXT, PRIMARY KEY(lib_id, collection));
+CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, type TEXT, title TEXT, status TEXT, detail TEXT, created_at INTEGER, finished_at INTEGER);
 `);
 db.prepare(`UPDATE tasks SET status='failed', detail='服务重启,任务已中断', finished_at=? WHERE status IN ('running','pending')`).run(Date.now());
@@ -343,6 +344,31 @@ app.post('/api/password', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+
+// ---------- 名称清理(只影响显示,不改文件) ----------
+const DEFAULT_RULES = {
+  cut: ['文脉里的', '科普新锐扶持计划', '边画边写讲知识', '抖音前沿科技首发计划'],
+  strip: ['抖音精选作者宠粉福利抖音精选app', '抖音独家', '抖音精选首发', '抖音精选', '混子哥边走边画边讲', '混子哥边画边讲'],
+};
+let rulesCache = null;
+function getRules() {
+  if (rulesCache) return rulesCache;
+  const r = db.prepare("SELECT v FROM settings WHERE k='name_rules'").get();
+  let o = null; try { o = r && JSON.parse(r.v); } catch { /* ignore */ }
+  rulesCache = o && Array.isArray(o.cut) && Array.isArray(o.strip) ? o : DEFAULT_RULES;
+  return rulesCache;
+}
+function cleanName(s) {
+  if (!s) return s;
+  const { cut, strip } = getRules();
+  let t = String(s);
+  for (const w of strip) if (w) t = t.split(w).join('');
+  let at = t.length;
+  for (const w of cut) { const i = w ? t.indexOf(w) : -1; if (i > 0 && i < at) at = i; }
+  t = t.slice(0, at).replace(/^[\s\-_·、,,.。]+|[\s\-_·、,,.。]+$/g, '');
+  return t || String(s);
+}
+
 // ----- 内容 -----
 const META = `SELECT v.id,v.title,v.duration,v.width,v.height,v.collection,v.seq,v.lib_id,l.name lname,
   IFNULL(p.position,0) pos,IFNULL(p.finished,0) finished,p.updated_at pt,(f.video_id IS NOT NULL) fav
@@ -352,8 +378,8 @@ const META = `SELECT v.id,v.title,v.duration,v.width,v.height,v.collection,v.seq
   LEFT JOIN collection_meta cm ON cm.lib_id=v.lib_id AND cm.collection=v.collection`;
 function shape(rows) {
   return rows.map(r => ({
-    id: r.id, title: r.title, duration: r.duration, width: r.width, height: r.height,
-    cname: r.collection ? r.collection.split('/').pop() : r.lname,
+    id: r.id, title: cleanName(r.title), duration: r.duration, width: r.width, height: r.height,
+    cname: r.collection ? cleanName(r.collection.split('/').pop()) : r.lname,
     seq: r.seq, lib: r.lib_id, col: r.collection, pos: r.pos, finished: !!r.finished, fav: !!r.fav
   }));
 }
@@ -396,7 +422,7 @@ app.get('/api/collections', auth, (req, res) => {
     GROUP BY v.lib_id,v.collection
     ORDER BY last DESC, l.name, v.collection`).all(u.id);
   res.json(rows.map(r => ({
-    lib: r.lib_id, col: r.collection, name: r.collection ? r.collection.split('/').pop() : r.lname,
+    lib: r.lib_id, col: r.collection, name: r.collection ? cleanName(r.collection.split('/').pop()) : r.lname,
     count: r.cnt, duration: r.dur || 0, done: r.done, cover: r.cover,
     last: r.last || 0, added: r.added || 0, cat: r.cat
   })));
@@ -577,6 +603,13 @@ adm.get('/libs/:id/collections', (req, res) => {
     LEFT JOIN collection_meta cm ON cm.lib_id=v.lib_id AND cm.collection=v.collection
     WHERE v.lib_id=? GROUP BY v.collection ORDER BY v.collection`).all(+req.params.id)
     .map(r => ({ col: r.col, name: r.col || '(根目录)', count: r.cnt, category: r.category })));
+});
+adm.get('/name-rules', (req, res) => res.json(getRules()));
+adm.put('/name-rules', (req, res) => {
+  const lines = a => (Array.isArray(a) ? a : []).map(x => String(x).trim()).filter(Boolean);
+  const o = { cut: lines(req.body && req.body.cut), strip: lines(req.body && req.body.strip) };
+  db.prepare("INSERT INTO settings VALUES('name_rules',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(JSON.stringify(o));
+  rulesCache = o; res.json({ ok: true });
 });
 adm.get('/categories', (req, res) => {
   res.json(db.prepare("SELECT DISTINCT category FROM collection_meta WHERE category<>'' ORDER BY category").all().map(r => r.category));

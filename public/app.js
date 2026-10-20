@@ -535,7 +535,7 @@ async function loadFav() {
   try {
     const r = await api('/api/feed?mode=fav');
     g.innerHTML = '';
-    if (!r.items.length) { g.appendChild(el('div', 'empty', '还没有收藏\n看视频时点 ♥ 或者双击屏幕就能收藏')); return; }
+    if (!r.items.length) { g.appendChild(el('div', 'empty', '还没有收藏\n看视频时点 ♥ 就能收藏')); return; }
     r.items.forEach((it, i) => g.appendChild(card({ img: '/api/thumb/' + it.id, name: it.title, meta: it.cname, onclick: () => openPlayer(r.items, i, 'fav') })));
   } catch (e) { g.innerHTML = ''; g.appendChild(el('div', 'empty', e.message)); }
 }

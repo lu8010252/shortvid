@@ -229,3 +229,19 @@ $('#goHome').onclick = () => { location.href = '/'; };
 $('#clearTasks').onclick = wrap(async () => { await api('/tasks', 'DELETE'); loadTasks(); });
 refresh().catch(e => toast(e.message));
 setInterval(() => { if (!document.hidden) { loadTasks().catch(() => {}); loadOverview().catch(() => {}); } }, 4000);
+
+/* ---------- 名称清理规则 ---------- */
+async function openNameRules() {
+  const r = await api('/name-rules');
+  let a, b;
+  modal('名称清理规则(只改显示,不动文件)', body => {
+    a = field(body, '删除词(每行一个,名称里出现就删掉)', el('textarea')); a.rows = 6; a.value = r.strip.join('\n');
+    b = field(body, '截断词(每行一个,名称里出现就从这里截掉后面)', el('textarea')); b.rows = 5; b.value = r.cut.join('\n');
+    [a, b].forEach(x => { x.style.width = '100%'; x.style.boxSizing = 'border-box'; });
+    body.appendChild(el('div', 'hint', '用于清理 dysync 同步出来的「标题+话题标签」拼接长名。保存后刷新前台即生效。'));
+  }, async () => {
+    const sp = t => t.value.split('\n');
+    await api('/name-rules', 'PUT', { strip: sp(a), cut: sp(b) }); toast('已保存');
+  });
+}
+document.getElementById('nameRules').onclick = wrap(openNameRules);

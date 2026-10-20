@@ -64,16 +64,20 @@ async function loadLibs() {
   });
 }
 function editLib(l) {
-  let name, path;
+  let name, path, merge;
   modal(l ? '编辑视频库' : '添加视频库', body => {
     name = field(body, '名称', inp('text', l ? l.name : '', '例如:呱呱和辣条'));
     path = field(body, '文件夹路径(容器内)', inp('text', l ? l.path : '/video', '/video/xxx'));
     const br = el('button', 'btn g s', '浏览文件夹…'); br.style.marginTop = '8px';
     br.onclick = () => browse(path.value, p => { path.value = p; if (!name.value) name.value = p.split('/').filter(Boolean).pop(); });
     body.appendChild(br);
+    const lb = el('label'); lb.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px';
+    merge = el('input'); merge.type = 'checkbox'; merge.checked = !!(l && l.merge); merge.style.marginTop = '3px';
+    lb.append(merge, document.createTextNode('文件夹里只有一个视频时,并入上一级文件夹作为一个合集(适合 dysync 同步的「关注」:每个视频一个文件夹,博主文件夹 = 一个合集)'));
+    body.appendChild(lb);
     body.appendChild(el('div', 'hint', '路径是容器里的路径:docker-compose 里把服务器目录挂载到 /video,这里就从 /video 往下选。'));
   }, async () => {
-    const b = { name: name.value, path: path.value };
+    const b = { name: name.value, path: path.value, merge: merge.checked };
     if (l) await api('/libs/' + l.id, 'PUT', b); else await api('/libs', 'POST', b);
     toast(l ? '已保存' : '已添加,正在后台扫描'); refresh();
   });

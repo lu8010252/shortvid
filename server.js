@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS collection_meta(lib_id INTEGER, collection TEXT, cate
 CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, type TEXT, title TEXT, status TEXT, detail TEXT, created_at INTEGER, finished_at INTEGER);
 `);
+try { db.exec('ALTER TABLE libraries ADD COLUMN merge INTEGER DEFAULT 0'); } catch { /* 已存在 */ }
 db.prepare(`UPDATE tasks SET status='failed', detail='服务重启,任务已中断', finished_at=? WHERE status IN ('running','pending')`).run(Date.now());
 
 // ---------- 工具函数 ----------
@@ -138,15 +139,18 @@ function normName(n) {
 const natCmp = (a, b) => collator.compare(normName(path.basename(a)), normName(path.basename(b)));
 
 function renumber(libId, col, reset) {
-  const rows = db.prepare('SELECT id,rel_path,seq,manual FROM videos WHERE lib_id=? AND collection=?').all(libId, col);
+  const rows = db.prepare('SELECT id,rel_path,seq,manual,mtime FROM videos WHERE lib_id=? AND collection=?').all(libId, col);
+  // 每个视频各占一个子文件夹(合并后的合集):按文件时间新的在前
+  const merged = rows.length > 1 && rows.every(r => path.posix.dirname(r.rel_path) !== (col || '.'));
+  const byTime = (a, b) => (b.mtime - a.mtime) || natCmp(a.rel_path, b.rel_path);
   const hasManual = !reset && rows.some(r => r.manual);
   let list;
   if (hasManual) {
     const fixed = rows.filter(r => r.seq > 0).sort((a, b) => a.seq - b.seq);
-    const fresh = rows.filter(r => !(r.seq > 0)).sort((a, b) => natCmp(a.rel_path, b.rel_path));
+    const fresh = rows.filter(r => !(r.seq > 0)).sort(merged ? byTime : (a, b) => natCmp(a.rel_path, b.rel_path));
     list = fixed.concat(fresh);
   } else {
-    list = rows.sort((a, b) => natCmp(a.rel_path, b.rel_path));
+    list = rows.sort(merged ? byTime : (a, b) => natCmp(a.rel_path, b.rel_path));
   }
   const up = db.prepare('UPDATE videos SET seq=?, manual=? WHERE id=?');
   db.transaction(() => list.forEach((r, i) => up.run(i + 1, hasManual ? r.manual : 0, r.id)))();
@@ -231,13 +235,19 @@ async function runScan(lib, tid) {
   const touched = new Set();
   let added = 0, removed = 0;
   const ins = db.prepare('INSERT INTO videos(lib_id,rel_path,collection,title,size,mtime) VALUES(?,?,?,?,?,?)');
+  const mv = db.prepare('UPDATE videos SET collection=?,seq=0,manual=0 WHERE id=?');
+  const perDir = new Map();
+  for (const f of files) { const d = path.posix.dirname(f.rel); perDir.set(d, (perDir.get(d) || 0) + 1); }
   const upd = db.prepare('UPDATE videos SET size=?,mtime=?,probed=0,has_thumb=0 WHERE id=?');
   db.transaction(() => {
     for (const f of files) {
       seen.add(f.rel);
       const e = existing.get(f.rel);
       const dir = path.posix.dirname(f.rel);
-      const col = dir === '.' ? '' : dir;
+      let col = dir === '.' ? '' : dir;
+      // 合并:文件夹里只有一个视频时,归入上一级文件夹的合集
+      if (lib.merge && col && perDir.get(dir) === 1) { const up = path.posix.dirname(col); col = up === '.' ? '' : up; }
+      if (e && e.collection !== col) { mv.run(col, e.id); touched.add(e.collection); touched.add(col); }
       if (!e) {
         ins.run(lib.id, f.rel, col, path.basename(f.rel, path.extname(f.rel)), f.size, f.mtime);
         touched.add(col); added++;
@@ -568,7 +578,7 @@ function libBody(req, res) {
   if (!name) { res.status(400).json({ error: '请填写名称' }); return null; }
   if (!insideRoot(p)) { res.status(400).json({ error: '路径必须在 ' + VIDEO_ROOT + ' 之下' }); return null; }
   if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) { res.status(400).json({ error: '该目录不存在' }); return null; }
-  return { name, path: p };
+  return { name, path: p, merge: req.body && req.body.merge ? 1 : 0 };
 }
 adm.get('/libs', (req, res) => {
   res.json(db.prepare(`SELECT l.*,(SELECT COUNT(*) FROM videos v WHERE v.lib_id=l.id) cnt,
@@ -576,13 +586,16 @@ adm.get('/libs', (req, res) => {
 });
 adm.post('/libs', (req, res) => {
   const b = libBody(req, res); if (!b) return;
-  const id = db.prepare('INSERT INTO libraries(name,path,created_at) VALUES(?,?,?)').run(b.name, b.path, Date.now()).lastInsertRowid;
+  const id = db.prepare('INSERT INTO libraries(name,path,created_at,merge) VALUES(?,?,?,?)').run(b.name, b.path, Date.now(), b.merge).lastInsertRowid;
   enqueueScan({ id, ...b });
   res.json({ ok: true, id });
 });
 adm.put('/libs/:id', (req, res) => {
   const b = libBody(req, res); if (!b) return;
-  db.prepare('UPDATE libraries SET name=?,path=? WHERE id=?').run(b.name, b.path, +req.params.id);
+  const old = db.prepare('SELECT merge FROM libraries WHERE id=?').get(+req.params.id);
+  db.prepare('UPDATE libraries SET name=?,path=?,merge=? WHERE id=?').run(b.name, b.path, b.merge, +req.params.id);
+  const lib = db.prepare('SELECT * FROM libraries WHERE id=?').get(+req.params.id);
+  if (old && lib && old.merge !== b.merge) enqueueScan(lib); // 合并方式改变,重新扫描归类
   res.json({ ok: true });
 });
 adm.delete('/libs/:id', (req, res) => {

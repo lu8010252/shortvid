@@ -289,7 +289,8 @@ app.set('trust proxy', true);
 app.use(express.json({ limit: '1mb' }));
 
 function auth(req, res, next) {
-  const sid = parseCookies(req.headers.cookie).sid;
+  // 原生播放器(TV APK 的 ExoPlayer)拿不到网页的 cookie,视频流接口额外允许 ?k=<会话令牌>
+  const sid = parseCookies(req.headers.cookie).sid || (req.path.startsWith('/api/stream/') ? String(req.query.k || '') : '');
   if (!sid) return res.status(401).json({ error: '未登录' });
   const u = db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?').get(sid, Date.now());
   if (!u || !u.enabled) return res.status(401).json({ error: '未登录或账号已停用' });
@@ -323,6 +324,11 @@ function newSession(req, res, uid, days) {
   res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${req.secure ? '; Secure' : ''}`);
 }
 const attempts = new Map();
+app.post('/api/stream-key', auth, (req, res) => {
+  const token = crypto.randomBytes(32).toString('hex');
+  db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(token, req.user.id, Date.now() + 864e5);
+  res.json({ key: token });
+});
 app.post('/api/login', (req, res) => {
   const ip = req.ip;
   const a = attempts.get(ip) || { n: 0, t: Date.now() };

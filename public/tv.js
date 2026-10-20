@@ -65,6 +65,12 @@
   function makeNative() {
     var N = window.ShortvidPlayer, st = {}, want = false, src = '', fired = {}, ls = {}, seekAt = 0, seekTo = 0;
     var o = { error: null, poster: '' };
+    var gen = 0, key = '', keyAt = 0;
+    // 原生播放器拿不到网页的 cookie:向服务器要一个视频流用的临时令牌,放在地址 ?k= 里
+    function withKey(fn) {
+      if (key && Date.now() - keyAt < 72e5) { fn(); return; }
+      api('/api/stream-key', {}).then(function (r) { key = r.key; keyAt = Date.now(); fn(); }, function () { fn(); });
+    }
     function fire(n) { var a = ls[n] || []; for (var i = 0; i < a.length; i++) { try { a[i].call(o); } catch (e) { /* ignore */ } } }
     function abs(u) { return /^https?:/i.test(u) ? u : location.origin + u; }
     function reset() { fired = {}; o.error = null; st = {}; }
@@ -80,7 +86,14 @@
       if (j.st === 4 && !fired.ended) { fired.ended = 1; fire('ended'); }
       if (j.err && !fired.err) { fired.err = 1; o.error = { code: 4, message: j.err }; fire('error'); }
     }, 300);
-    Object.defineProperty(o, 'src', { get: function () { return src; }, set: function (u) { src = u; want = false; reset(); N.open(abs(u), 0); } });
+    Object.defineProperty(o, 'src', { get: function () { return src; }, set: function (u) {
+        src = u; want = false; reset();
+        var my = ++gen;
+        withKey(function () {
+          if (my !== gen) return;
+          N.open(abs(u) + (key ? (u.indexOf('?') < 0 ? '?' : '&') + 'k=' + key : ''), 0);
+        });
+      } });
     Object.defineProperty(o, 'paused', { get: function () { return !want; } });
     Object.defineProperty(o, 'ended', { get: function () { return st.st === 4; } });
     Object.defineProperty(o, 'duration', { get: function () { return (st.dur || 0) / 1000; } });
@@ -94,7 +107,7 @@
     Object.defineProperty(o, 'videoHeight', { get: function () { return st.h || 0; } });
     o.play = function () { want = true; N.play(); };
     o.pause = function () { want = false; N.pause(); setTimeout(function () { fire('pause'); }, 0); };
-    o.removeAttribute = function () { src = ''; reset(); want = false; N.close(); };
+    o.removeAttribute = function () { src = ''; gen++; reset(); want = false; N.close(); };
     o.getAttribute = function () { return src || null; };
     o.load = function () {};
     o.addEventListener = function (n, f) { (ls[n] = ls[n] || []).push(f); };

@@ -446,6 +446,8 @@
   }
   function showOv() {
     var ov = $('#ov'); ov.classList.add('show');
+    var dg = $('#ovDbg'); if (!dg) { dg = el('div', 'ovc', ''); dg.id = 'ovDbg'; $('#ovC').parentNode.appendChild(dg); }
+    dg.textContent = dbgInfo() + (P.fb ? ' 已转码' : '');
     var mid = $('#ovMid'); mid.textContent = V.paused ? '▶' : ''; mid.classList.toggle('show', V.paused);
     clearTimeout(P.ovT);
     if (!V.paused) P.ovT = setTimeout(function () { ov.classList.remove('show'); }, 3500);
@@ -505,7 +507,8 @@
     var idx = P.i;
     P.stallT = setTimeout(function () {
       if (S.screen !== 'player' || P.i !== idx || locked || resting) return;
-      if (!V.paused && V.currentTime > 0.2) return;
+      // 有声音在走但没有画面(videoWidth=0):投影解不了这个视频的画面编码,同样要转码
+      if (!V.paused && V.currentTime > 0.2 && V.videoWidth > 0) return;
       if (V.paused && V.readyState >= 3) { showMsg('按「确定」键开始播放'); return; }
       if (tryFallback()) return;
       showMsg('视频一直没有画面,请把下面这行发给开发者\n' + dbgInfo());

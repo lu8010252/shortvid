@@ -515,11 +515,14 @@ PLAYER_CODE = r'''
         android.webkit.WebView wv = getBridge().getWebView();
         ViewGroup parent = (ViewGroup) wv.getParent();
         exoBox = new FrameLayout(this);
+        exoBox.setBackgroundColor(Color.BLACK);
         exoView = new SurfaceView(this);
         exoBox.addView(exoView, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
         parent.addView(exoBox, 0, new ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        parent.setBackgroundColor(Color.BLACK);
+        getWindow().getDecorView().setBackgroundColor(Color.BLACK);
         wv.setBackgroundColor(Color.TRANSPARENT);
         DefaultRenderersFactory rf = new DefaultRenderersFactory(this).setEnableDecoderFallback(true);
         exo = new ExoPlayer.Builder(this, rf).build();

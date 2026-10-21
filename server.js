@@ -221,13 +221,17 @@ function setTask(id, status, detail) {
   db.prepare('UPDATE tasks SET status=?, detail=?, finished_at=? WHERE id=?').run(status, detail, fin, id);
 }
 let queue = Promise.resolve();
-function enqueueScan(lib) {
+const scanning = new Set(); // 已在排队/扫描中的视频库,避免重复排队
+function enqueueScan(lib, auto) {
+  if (scanning.has(lib.id)) return null;
+  scanning.add(lib.id);
   const id = db.prepare('INSERT INTO tasks(type,title,status,detail,created_at) VALUES(?,?,?,?,?)')
-    .run('scan', '扫描:' + lib.name, 'pending', '排队中', Date.now()).lastInsertRowid;
-  queue = queue.then(() => runScan(lib, id)).catch(e => setTask(id, 'failed', String((e && e.message) || e)));
+    .run('scan', (auto ? '定时扫描:' : '扫描:') + lib.name, 'pending', '排队中', Date.now()).lastInsertRowid;
+  queue = queue.then(() => runScan(lib, id, auto)).catch(e => setTask(id, 'failed', String((e && e.message) || e)))
+    .finally(() => scanning.delete(lib.id));
   return id;
 }
-async function runScan(lib, tid) {
+async function runScan(lib, tid, auto) {
   setTask(tid, 'running', '读取目录…');
   if (!fs.existsSync(lib.path)) throw new Error('目录不存在:' + lib.path);
   const files = [];
@@ -280,8 +284,25 @@ async function runScan(lib, tid) {
       db.prepare('UPDATE videos SET probed=1 WHERE id=?').run(v.id);
     }
   }
+  // 定时扫描没有任何变化时不留任务记录,免得任务列表被刷满
+  if (auto && !added && !removed && !todo.length) { db.prepare('DELETE FROM tasks WHERE id=?').run(tid); return; }
   setTask(tid, 'done', `完成:共 ${files.length} 个视频,新增 ${added},移除 ${removed}`);
 }
+
+// ---------- 定时扫描 ----------
+const DEFAULT_AUTO = { enabled: true, minutes: 30 };
+function getAuto() {
+  const r = db.prepare("SELECT v FROM settings WHERE k='auto_scan'").get();
+  let o = null; try { o = r && JSON.parse(r.v); } catch { /* ignore */ }
+  return o && typeof o.enabled === 'boolean' && o.minutes >= 1 ? o : DEFAULT_AUTO;
+}
+let lastAuto = Date.now();
+setInterval(() => {
+  const a = getAuto();
+  if (!a.enabled || Date.now() - lastAuto < a.minutes * 60e3) return;
+  lastAuto = Date.now();
+  for (const lib of db.prepare('SELECT * FROM libraries').all()) enqueueScan(lib, true);
+}, 30e3);
 
 // ---------- 应用 ----------
 const app = express();
@@ -643,6 +664,13 @@ adm.post('/libs/:id/scan', (req, res) => {
   const lib = db.prepare('SELECT * FROM libraries WHERE id=?').get(+req.params.id);
   if (!lib) return res.status(404).json({ error: '视频库不存在' });
   res.json({ ok: true, task: enqueueScan(lib) });
+});
+adm.get('/auto-scan', (req, res) => res.json(getAuto()));
+adm.put('/auto-scan', (req, res) => {
+  const o = { enabled: !!(req.body && req.body.enabled), minutes: Math.min(1440, Math.max(1, Math.round(+(req.body && req.body.minutes) || 30))) };
+  db.prepare("INSERT INTO settings VALUES('auto_scan',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(JSON.stringify(o));
+  lastAuto = Date.now();
+  res.json({ ok: true, ...o });
 });
 adm.get('/libs/:id/collections', (req, res) => {
   res.json(db.prepare(`SELECT v.collection col,COUNT(*) cnt,IFNULL(cm.category,'') category FROM videos v

@@ -249,3 +249,17 @@ async function openNameRules() {
   });
 }
 document.getElementById('nameRules').onclick = wrap(openNameRules);
+
+/* ---------- 定时扫描 ---------- */
+async function openAutoScan() {
+  const r = await api('/auto-scan');
+  let on, mins;
+  modal('定时扫描', body => {
+    on = chk(body, '开启定时扫描', r.enabled);
+    mins = field(body, '扫描间隔(分钟,1~1440)', inp('number', r.minutes)); mins.min = 1; mins.max = 1440;
+    body.appendChild(el('div', 'hint', '到点自动扫描所有视频库,新增/移除的视频会自动同步;没有变化时不会留下任务记录。'));
+  }, async () => {
+    await api('/auto-scan', 'PUT', { enabled: on.checked, minutes: +mins.value || 30 }); toast('已保存');
+  });
+}
+document.getElementById('autoScan').onclick = wrap(openAutoScan);
